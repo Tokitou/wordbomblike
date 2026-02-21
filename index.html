@@ -155,6 +155,7 @@
         </div>
         <div class="syllable-actions">
           <button id="downloadDeathsBtn_main" class="small-btn">📥 Télécharger</button>
+          <label id="uploadDeathsLabel" class="small-btn" style="cursor:pointer;" title="Importer un fichier .txt (1 syllabe par ligne)">📤 Importer<input type="file" id="uploadDeathsInput" accept=".txt" style="display:none" /></label>
           <button id="clearAllDeathsBtn" class="small-btn danger" data-i18n="clearAll">🗑️ Tout supprimer</button>
         </div>
       </div>
@@ -735,7 +736,7 @@
       rooms.forEach(room => {
         const isPlaying = room.gameState === 'playing';
         const card = document.createElement('div');
-        card.className = 'room-card' + (isPlaying ? ' is-playing' : '');
+        card.className = 'room-card' + (isPlaying ? ' is-playing' : ' is-available');
         card.onclick = () => { if (!isPlaying) joinRoom(room); };
 
         const avatarDiv = document.createElement('div');
@@ -771,6 +772,11 @@
           playingBadge.className = 'room-playing-badge';
           playingBadge.textContent = 'En jeu';
           headerDiv.appendChild(playingBadge);
+        } else {
+          const availableBadge = document.createElement('span');
+          availableBadge.className = 'room-available-badge';
+          availableBadge.textContent = 'En attente';
+          headerDiv.appendChild(availableBadge);
         }
         headerDiv.appendChild(hostDiv);
 
@@ -834,7 +840,8 @@
       }
       // Fallback local
       try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch(e) {}
-      window.location.href = 'room.html';
+      const _fallbackUrl = 'room.html';
+      window.WBTransitions ? window.WBTransitions.joinRoom(_fallbackUrl, room.name || '') : (window.location.href = _fallbackUrl);
     }
 
     // ==================== SYLLABLE STATS FETCHER ====================
@@ -2298,6 +2305,57 @@
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       });
 
+      // ==================== UPLOAD SYLLABES ====================
+      $('#uploadDeathsInput')?.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        e.target.value = '';
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const text = ev.target.result || '';
+          const lines = text.split(/\r?\n/);
+
+          let imported = 0;
+          let skipped = 0;
+          const skippedList = [];
+
+          const current = loadDeaths();
+          const existing = new Set(current.map(s => normalizeS(s)));
+
+          for (const raw of lines) {
+            const s = normalizeS(raw);
+            if (!s) continue;
+
+            // 1. Uniquement des lettres (pas de chiffres, espaces, ponctuation)
+            if (!/^\p{L}+$/u.test(s)) { skipped++; skippedList.push(raw.trim()); continue; }
+
+            // 2. Longueur : syllabe valide = 2 a 4 caracteres max.
+            //    Tout ce qui depasse 4 lettres est un mot deguise -> rejete.
+            if (s.length < 2 || s.length > 4) { skipped++; skippedList.push(raw.trim()); continue; }
+
+            // 3. Pas de doublon
+            if (existing.has(s)) continue;
+
+            existing.add(s);
+            current.push(s);
+            imported++;
+          }
+
+          saveDeaths(current);
+          renderDeathsCategorized();
+
+          let msg = `${imported} syllabe${imported !== 1 ? 's' : ''} importee${imported !== 1 ? 's' : ''}.`;
+          if (skipped > 0) {
+            msg += `\n${skipped} entree${skipped !== 1 ? 's' : ''} ignoree${skipped !== 1 ? 's' : ''} (trop longues ou format invalide).`;
+            if (skippedList.length <= 10) msg += '\nIgnorees : ' + skippedList.join(', ');
+          }
+          alert(msg);
+        };
+        reader.onerror = () => alert('Erreur lors de la lecture du fichier.');
+        reader.readAsText(file, 'utf-8');
+      });
+
       $('#clearAllDeathsBtn')?.addEventListener('click', () => {
         if (!confirm('Supprimer toutes les syllabes ratées ?')) return;
 
@@ -2553,15 +2611,17 @@
     socket.on('roomCreated', (room) => {
       console.log('Salle créée:', room.id);
       try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch(e) {}
-      // Fermer le modal et rediriger
+      // Fermer le modal et lancer l'animation de transition
       if (typeof window.closeModal === 'function') window.closeModal('createRoomModal');
-      window.location.href = `room.html?roomId=${room.id}`;
+      const url = `room.html?roomId=${room.id}`;
+      window.WBTransitions ? window.WBTransitions.joinRoom(url, room.name || '') : (window.location.href = url);
     });
 
     // === Salle rejointe (via clic sur carte) ===
     socket.on('roomJoined', ({ room }) => {
       try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch(e) {}
-      window.location.href = `room.html?roomId=${room.id}`;
+      const url = `room.html?roomId=${room.id}`;
+      window.WBTransitions ? window.WBTransitions.joinRoom(url, room.name || '') : (window.location.href = url);
     });
 
     socket.on('joinError', (msg) => {
@@ -2636,5 +2696,9 @@
 
   })();
   </script>
+
+
+  <!-- Transitions & animations -->
+  <script src="transitions.js"></script>
 </body>
 </html>
