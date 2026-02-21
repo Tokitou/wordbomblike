@@ -1510,6 +1510,53 @@
 
     .btn-join.disabled:hover { transform: none; }
 
+    /* Salle disponible (en attente de joueurs) */
+    .room-card.is-available {
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.2), 0 0 24px rgba(59, 130, 246, 0.1);
+    }
+
+    .room-card.is-available::before {
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      opacity: 1;
+    }
+
+    .room-card.is-available:hover {
+      border-color: rgba(59, 130, 246, 0.75);
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4), 0 0 32px rgba(59, 130, 246, 0.2);
+    }
+
+    .room-card.is-available:hover::before { opacity: 1; }
+
+    .room-available-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.4);
+      color: #93c5fd;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .room-available-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #3b82f6;
+      animation: pulse-blue 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse-blue {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+
     /* ===========================================================
        EMPTY STATE (quand il n'y a pas de salles)
        =========================================================== */
