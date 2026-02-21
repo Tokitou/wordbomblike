@@ -1,0 +1,2640 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Wordbomb - Accueil</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!--
+    Fix local: for the homepage we force vertical scrolling on body/main-content.
+    This is a minimal, safe override to ensure index.html remains scrollable even
+    if other pages (ex: room.html) or rules set body overflow:hidden.
+    It is intentionally small so most styles remain in style.css.
+  -->
+  <style>
+    /* Ensure the page can scroll vertically on the homepage */
+    body.index-page {
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Make sure the central main-content scrolls if its content is tall */
+    .main-content {
+      overflow-y: auto !important;
+      max-height: calc(100vh - 160px);
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 48px;
+    }
+  </style>
+  
+  <!-- Scripts de traduction et guide -->
+  <script src="translations.js"></script>
+  <script src="guide-content.js"></script>
+</head>
+<body class="index-page">
+  <!-- ===============================================================
+       HEADER : navigation principale
+       - menuBtn : ouvre/ferme le menu déroulant (positionné dynamiquement)
+       - profileBtn : ouvre la modal de profil (editer pseudo/avatar)
+       =============================================================== -->
+  <header class="header">
+    <div class="nav-left" style="display: flex; align-items: center; gap: 12px;">
+      <div class="logo" style="font-size: 30px; letter-spacing: 1px;">
+        <span>Wordbomb</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <button id="languageBtn" class="extra-btn" title="Langue">🌐</button>
+      <button id="staffBtn" class="extra-btn" title="Compte Staff">🛡️</button>
+      <button id="adminUsersBtn" class="extra-btn admin-only-btn" title="Utilisateurs" style="display:none">👁️</button>
+      <button id="guideBtn" class="extra-btn" title="Guide">📖</button>
+      <button id="profileBtn" class="profile-btn" title="Profil">
+        <img id="profileImg" src="" alt="Avatar" />
+      </button>
+    </div>
+  </header>
+
+  <!-- ===============================================================
+       MENU DROPDOWN (initialement masqué)
+       - affiché/positionné par JS dans la fonction positionMenu()
+       - contient des raccourcis ou informations rapides
+       =============================================================== -->
+  <div id="mainMenu" class="menu-dropdown" role="menu" aria-hidden="true">
+    <div class="menu-head">
+      <div class="menu-title">Menu</div>
+      <button id="closeMenu" class="menu-close" aria-label="Fermer">✕</button>
+    </div>
+    <div class="menu-empty">Les raccourcis ont été désactivés.</div>
+  </div>
+
+  <!-- ===============================================================
+       HERO (bannière d'accueil)
+       - CTA pour créer une salle ou lancer une partie rapide
+       =============================================================== -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1 class="hero-title" data-i18n="heroTitle">Maîtrisez les mots, avant que la bombe n'explose</h1>
+      <p class="hero-subtitle" data-i18n="heroSubtitle">
+        Défiez vos amis dans des parties rapides et intenses. Trouvez des mots contenant la syllabe donnée avant que le temps ne s'épuise !
+      </p>
+      <div class="cta-buttons">
+        <button class="btn-primary" id="openCreateRoomBtn" data-i18n="createRoom">
+          🚀 Créer une salle
+        </button>
+        <button class="btn-secondary" id="quickPlayBtn" data-i18n="quickPlay">
+          ⚡ Partie rapide
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===============================================================
+       TABS : navigation interne (gère l'affichage des sections)
+       - chaque bouton déclenche activateTab(tabName) en JS
+       =============================================================== -->
+  <div class="tabs-container">
+    <div class="tabs">
+      <button id="tab-salles" class="tab active" data-i18n="tabRooms">🏠 Salles</button>
+      <button id="tab-search" class="tab" data-i18n="tabSearch">🔍 Recherche</button>
+      <button id="tab-syllabes" class="tab" data-i18n="tabSyllables">📊 Syllabes</button>
+      <button id="tab-dico" class="tab" data-i18n="tabDictionary">📚 Dictionnaire</button>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       MAIN CONTENT : sections correspondant aux onglets
+       - sallesSection : liste des salles disponibles (stockées en localStorage)
+       - searchSection : recherche via API / fallback local
+       - syllabesSection : affichage des syllabes ratées, classées par fréquence
+       - dicoSection : outils pour administrer le dictionnaire local (requiert API)
+       =============================================================== -->
+  <main class="main-content">
+    <!-- Salles Section -->
+    <section id="sallesSection" class="section active">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title" data-i18n="roomsTitle">Salles de jeu</h2>
+          <p class="section-subtitle" data-i18n="roomsSubtitle">Rejoignez une partie ou créez la vôtre</p>
+        </div>
+      </div>
+      
+      <div id="roomsContainer" class="rooms-grid"></div>
+
+      <div id="emptyState" class="empty-state" style="display: none;">
+        <div class="empty-icon">🎮</div>
+        <div class="empty-title" data-i18n="emptyRoomsTitle">Aucune salle disponible</div>
+        <div class="empty-subtitle" data-i18n="emptyRoomsDesc">Soyez le premier à créer une salle et lancez une partie !</div>
+      </div>
+    </section>
+
+    <!-- Search Section -->
+    <section id="searchSection" class="section">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title" data-i18n="searchTitle">Recherche de mots</h2>
+          <p class="section-subtitle" data-i18n="searchSubtitle">Vérifiez si un mot existe dans le dictionnaire</p>
+        </div>
+      </div>
+      
+      <div class="search-box">
+        <input type="text" id="searchInput" class="search-input" placeholder="Tapez un mot ou une syllabe..." data-i18n-attr='{"placeholder":"searchPlaceholder"}' />
+        <button id="searchBtn" class="small-btn" data-i18n="searchButton">🔍 Rechercher</button>
+        <button id="clearSearchBtn" class="small-btn">✕ Effacer</button>
+      </div>
+
+      <div id="searchResults" class="search-results"></div>
+    </section>
+
+    <!-- Syllabes Section -->
+    <section id="syllabesSection" class="section">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title" data-i18n="syllablesTitle">Syllabes ratées</h2>
+          <p class="section-subtitle" data-i18n="syllablesSubtitle">Analysez vos difficultés et progressez</p>
+        </div>
+        <div class="syllable-actions">
+          <button id="downloadDeathsBtn_main" class="small-btn">📥 Télécharger</button>
+          <button id="clearAllDeathsBtn" class="small-btn danger" data-i18n="clearAll">🗑️ Tout supprimer</button>
+        </div>
+      </div>
+
+      <div id="cat-4letters" class="syllable-category">
+        <div class="cat-title">
+          <div class="title-left">4 lettres</div>
+          <div id="cat-4letters-count" class="count-pill">0</div>
+        </div>
+        <div id="grid-4letters" class="syllable-grid">
+          <div class="empty-note">Aucune syllabe 4 lettres.</div>
+        </div>
+      </div>
+
+      <div id="cat-sub8" class="syllable-category">
+        <div class="cat-title">
+          <div class="title-left">Sub 8 (1–8 mots)</div>
+          <div id="cat-sub8-count" class="count-pill">0</div>
+        </div>
+        <div id="grid-sub8" class="syllable-grid">
+          <div class="empty-note">Aucun sub 1–8.</div>
+        </div>
+      </div>
+
+      <div id="cat-sub50" class="syllable-category">
+        <div class="cat-title">
+          <div class="title-left">Sub 50 (9–50 mots)</div>
+          <div id="cat-sub50-count" class="count-pill">0</div>
+        </div>
+        <div id="grid-sub50" class="syllable-grid">
+          <div class="empty-note">Aucun sub 9–50.</div>
+        </div>
+      </div>
+
+      <div id="cat-others" class="syllable-category">
+        <div class="cat-title">
+          <div class="title-left">Autres (51+ / inconnus)</div>
+          <div id="cat-others-count" class="count-pill">0</div>
+        </div>
+        <div id="grid-others" class="syllable-grid">
+          <div class="empty-note">Aucune syllabe dans cette catégorie.</div>
+        </div>
+      </div>
+
+      <div style="color: var(--muted); font-size: 14px; margin-top: 24px; text-align: center;">
+        💡 Les syllabes sont catégorisées selon leur fréquence dans le dictionnaire
+      </div>
+    </section>
+
+    <!-- Dictionary Section -->
+    <section id="dicoSection" class="section">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title" data-i18n="dictionaryTitle">Gestion du dictionnaire</h2>
+          <p class="section-subtitle" data-i18n="dictionarySubtitle">Ajoutez ou supprimez des mots du dictionnaire local</p>
+        </div>
+      </div>
+
+      <div class="dico-container">
+        <h3 class="dico-title">Proposer une modification</h3>
+        <p class="dico-subtitle">Les demandes sont soumises à validation par un administrateur avant d'être appliquées.</p>
+
+        <div class="dico-request-form">
+          <div class="dico-request-type-row">
+            <button class="dico-type-btn active" id="dicoTypeAdd" data-type="add">
+              <span class="dico-type-icon">➕</span>
+              <span>Ajouter un mot</span>
+            </button>
+            <button class="dico-type-btn" id="dicoTypeRemove" data-type="remove">
+              <span class="dico-type-icon">➖</span>
+              <span>Supprimer un mot</span>
+            </button>
+          </div>
+          <div class="dico-request-input-row">
+            <input
+              type="text"
+              id="dicoWordInput"
+              class="dico-request-input"
+              placeholder="Entrez un mot..."
+              maxlength="50"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="dicoSubmitRequestBtn" class="dico-submit-btn">
+              <span id="dicoSubmitBtnLabel">Soumettre</span>
+            </button>
+          </div>
+          <div id="dicoRequestStatus" class="dico-request-status"></div>
+        </div>
+
+        <div class="dico-request-history">
+          <div class="dico-request-history-header">
+            <span class="dico-history-title">📋 Mes demandes récentes</span>
+          </div>
+          <div id="dicoRequestHistory" class="dico-request-history-list">
+            <div class="dico-history-empty">Aucune demande envoyée</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===============================================================
+       CREATE ROOM MODAL
+       - formulaire local : crée une entrée "room" dans localStorage (salles locales)
+       - utile pour tests / parties en local
+       =============================================================== -->
+  <div id="createRoomModal" class="modal-overlay" inert>
+    <div class="modal">
+      <h2 class="modal-title" data-i18n="createRoomTitle">Créer une salle</h2>
+
+      <div class="form-row">
+        <label class="form-label" for="roomName" data-i18n="roomNameLabel">Nom de la salle</label>
+        <input type="text" id="roomName" class="form-input" placeholder="Ma super salle" data-i18n-attr='{"placeholder":"roomNamePlaceholder"}' />
+      </div>
+
+      <div class="form-row">
+        <label class="form-label" for="hostName" data-i18n="hostNameLabel">Votre pseudo</label>
+        <input type="text" id="hostName" class="form-input" placeholder="GuestXXXX" data-i18n-attr='{"placeholder":"hostNamePlaceholder"}' />
+      </div>
+
+      <div id="createNotice" style="color: #ff6b6b; margin-bottom: 16px; font-size: 14px;"></div>
+
+      <div class="btn-row">
+        <button id="confirmCreate" class="btn-primary" data-i18n="create">Créer</button>
+        <button id="cancelCreate" class="btn-secondary" data-i18n="cancel">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       PROFILE MODAL
+       - permet d'éditer le pseudo et de charger un avatar (FileReader -> dataURL)
+       - sauvegarde en localStorage sous PROFILE_KEY
+       =============================================================== -->
+  <!-- ===============================================================
+       WELCOME SETUP MODAL (première visite)
+       =============================================================== -->
+  <div id="welcomeSetupModal" class="modal-overlay welcome-setup-overlay" inert>
+    <div class="modal welcome-setup-modal">
+      <div class="welcome-setup-top">
+        <div class="welcome-setup-bomb">💣</div>
+        <h2 class="welcome-setup-title">Bienvenue sur <span>Wordbomb</span> !</h2>
+        <p class="welcome-setup-sub">Avant de jouer, choisis ton pseudo. Tu pourras toujours le modifier plus tard.</p>
+      </div>
+
+      <div class="welcome-setup-form">
+        <div class="form-row">
+          <label class="form-label">Pseudo <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="setupUsername" class="form-input welcome-setup-input" placeholder="Ex : TokiMaster42" maxlength="24" autocomplete="off" />
+          <div id="setupUsernameError" class="setup-error" style="display:none">⚠️ Le pseudo doit faire au moins 2 caractères.</div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label">Photo de profil <span style="color:var(--muted);font-weight:500">(optionnel)</span></label>
+          <div class="welcome-avatar-row">
+            <div class="welcome-avatar-preview" id="setupAvatarPreview">
+              <img id="setupAvatarImg" src="" alt="avatar" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%" />
+              <span id="setupAvatarPlaceholder">👤</span>
+            </div>
+            <label class="welcome-avatar-btn" for="setupAvatarInput">
+              📷 Choisir une image
+              <input type="file" id="setupAvatarInput" accept="image/*" style="display:none" />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <button id="setupConfirmBtn" class="btn-primary welcome-setup-btn">Commencer à jouer 🚀</button>
+    </div>
+  </div>
+
+  <div id="profileModal" class="modal-overlay" inert>
+    <div class="modal">
+      <h2 class="modal-title" data-i18n="profileTitle">Mon profil</h2>
+
+      <div class="profile-grid">
+        <div class="avatar-preview">
+          <img id="avatarPreviewImg" src="" alt="Avatar" />
+        </div>
+        <div>
+          <div class="form-row">
+            <label class="form-label" for="profileName" data-i18n="pseudoLabel">Pseudo</label>
+            <input type="text" id="profileName" class="form-input" placeholder="GuestXXXX" data-i18n-attr='{"placeholder":"hostNamePlaceholder"}' />
+          </div>
+          <div class="form-row">
+            <label class="form-label" for="avatarInput" data-i18n="avatarLabel">Avatar</label>
+            <input type="file" id="avatarInput" accept="image/*" style="font-size: 14px; color: var(--muted);" />
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button id="saveProfile" class="btn-primary" data-i18n="save">Enregistrer</button>
+        <button id="cancelProfile" class="btn-secondary" data-i18n="cancel">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       LANGUAGE MODAL
+       - permet de choisir la langue de l'interface
+       =============================================================== -->
+  <div id="languageModal" class="modal-overlay" inert>
+    <div class="modal">
+      <h2 class="modal-title" data-i18n="chooseLanguage">🌐 Choisir la langue</h2>
+
+      <div class="language-grid">
+        <button class="language-option active" data-lang="fr">
+          <span class="language-flag">🇫🇷</span>
+          <span class="language-name" data-i18n="french">Français</span>
+        </button>
+        <button class="language-option" data-lang="en">
+          <span class="language-flag">🇬🇧</span>
+          <span class="language-name" data-i18n="english">English</span>
+        </button>
+        <button class="language-option" data-lang="es">
+          <span class="language-flag">🇪🇸</span>
+          <span class="language-name" data-i18n="spanish">Español</span>
+        </button>
+      </div>
+
+      <div class="btn-row">
+        <button id="closeLanguage" class="btn-secondary">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       STAFF MODAL
+       =============================================================== -->
+  <!-- ===============================================================
+       STAFF MODAL — LOGIN UNIQUEMENT
+       =============================================================== -->
+  <div id="staffModal" class="modal-overlay" inert>
+    <div class="modal staff-login-modal">
+      <div class="staff-login-logo">🛡️</div>
+      <h2 class="staff-login-title">Espace Staff</h2>
+      <div id="staffLoginError" class="staff-error" style="display:none"></div>
+      <div class="staff-login-fields">
+        <input type="text" id="staffUsername" class="staff-login-input" placeholder="Identifiant" autocomplete="username" />
+        <input type="password" id="staffPassword" class="staff-login-input" placeholder="Mot de passe" autocomplete="current-password" />
+      </div>
+      <div class="staff-login-actions">
+        <button id="staffLoginBtn" class="staff-login-btn">Se connecter</button>
+        <button id="closeStaffLogin" class="staff-login-cancel">Annuler</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       ADMIN PANEL — Grand panel multi-onglets
+       =============================================================== -->
+  <div id="adminPanelModal" class="modal-overlay" inert>
+    <div class="admin-panel">
+
+      <!-- SIDEBAR -->
+      <div class="admin-panel-sidebar">
+        <div class="admin-panel-brand">
+          <span class="admin-panel-brand-icon">⚡</span>
+          <span class="admin-panel-brand-name">Admin</span>
+        </div>
+        <div class="admin-panel-identity" id="adminPanelIdentity">
+          <!-- Rempli par JS -->
+        </div>
+        <nav class="admin-panel-nav">
+          <button class="admin-nav-item active" data-tab="requests">
+            <span class="admin-nav-icon">📥</span>
+            <span class="admin-nav-label">Demandes</span>
+            <span class="admin-nav-badge" id="adminNavBadgeRequests" style="display:none">0</span>
+          </button>
+          <button class="admin-nav-item" data-tab="users">
+            <span class="admin-nav-icon">👥</span>
+            <span class="admin-nav-label">Utilisateurs</span>
+          </button>
+          <button class="admin-nav-item" data-tab="bans">
+            <span class="admin-nav-icon">🚫</span>
+            <span class="admin-nav-label">Bannis</span>
+          </button>
+          <button class="admin-nav-item" data-tab="accounts">
+            <span class="admin-nav-icon">🔑</span>
+            <span class="admin-nav-label">Comptes</span>
+          </button>
+          <button class="admin-nav-item" data-tab="settings">
+            <span class="admin-nav-icon">⚙️</span>
+            <span class="admin-nav-label">Compte</span>
+          </button>
+        </nav>
+        <button class="admin-panel-logout" id="adminPanelLogoutBtn">
+          <span>Déconnexion</span>
+          <span>→</span>
+        </button>
+      </div>
+
+      <!-- MAIN CONTENT -->
+      <div class="admin-panel-main">
+        <button class="admin-panel-close" id="closeAdminPanel" title="Fermer">✕</button>
+
+        <!-- ONGLET: DEMANDES DICTIONNAIRE -->
+        <div class="admin-tab-content active" id="adminTab-requests">
+          <div class="admin-tab-header">
+            <h2 class="admin-tab-title">📥 Demandes dictionnaire</h2>
+            <button class="admin-action-btn secondary" id="adminRequestsRefreshBtn">↻ Actualiser</button>
+          </div>
+          <div class="admin-requests-filters">
+            <button class="admin-filter-btn active" data-filter="pending">En attente <span id="adminFilterCountPending">0</span></button>
+            <button class="admin-filter-btn" data-filter="approved">Approuvées</button>
+            <button class="admin-filter-btn" data-filter="rejected">Refusées</button>
+            <button class="admin-filter-btn" data-filter="all">Toutes</button>
+          </div>
+          <div id="adminRequestsList" class="admin-requests-list">
+            <div class="admin-empty-state">⏳ Chargement...</div>
+          </div>
+        </div>
+
+        <!-- ONGLET: UTILISATEURS -->
+        <div class="admin-tab-content" id="adminTab-users">
+          <div class="admin-tab-header">
+            <h2 class="admin-tab-title">👥 Utilisateurs connectés</h2>
+            <button class="admin-action-btn secondary" id="adminUsersRefreshBtn">↻ Actualiser</button>
+          </div>
+          <div id="adminUsersList" class="admin-entity-list"></div>
+        </div>
+
+        <!-- ONGLET: BANNIS -->
+        <div class="admin-tab-content" id="adminTab-bans">
+          <div class="admin-tab-header">
+            <h2 class="admin-tab-title">🚫 IP Bannies</h2>
+            <button class="admin-action-btn secondary" id="adminBansRefreshBtn">↻ Actualiser</button>
+          </div>
+          <div id="adminBansList" class="admin-entity-list"></div>
+        </div>
+
+        <!-- ONGLET: COMPTES STAFF -->
+        <div class="admin-tab-content" id="adminTab-accounts">
+          <div class="admin-tab-header">
+            <h2 class="admin-tab-title">🔑 Comptes Staff</h2>
+          </div>
+          <div class="admin-create-account-form">
+            <h3 class="admin-form-subtitle">Créer un compte</h3>
+            <div id="adminCreateAccError" class="staff-error" style="display:none"></div>
+            <div id="adminCreateAccSuccess" class="staff-success" style="display:none"></div>
+            <div class="admin-form-row">
+              <input type="text" id="newStaffUsername" class="admin-form-input" placeholder="Identifiant" maxlength="30" />
+              <input type="password" id="newStaffPassword" class="admin-form-input" placeholder="Mot de passe (8 car. min)" maxlength="100" />
+              <select id="newStaffRole" class="admin-form-select">
+                <option value="staff">Staff</option>
+                <option value="admin">Admin</option>
+              </select>
+              <button id="createStaffBtn" class="admin-action-btn primary">Créer</button>
+            </div>
+          </div>
+          <div id="staffAccountsList" class="admin-entity-list" style="margin-top:16px"></div>
+        </div>
+
+        <!-- ONGLET: MON COMPTE -->
+        <div class="admin-tab-content" id="adminTab-settings">
+          <div class="admin-tab-header">
+            <h2 class="admin-tab-title">⚙️ Mon compte</h2>
+          </div>
+          <div class="admin-settings-card">
+            <h3 class="admin-form-subtitle">🔒 Changer mon mot de passe</h3>
+            <div id="adminPwdError" class="staff-error" style="display:none"></div>
+            <div id="adminPwdSuccess" class="staff-success" style="display:none"></div>
+            <div class="admin-form-row vertical">
+              <input type="password" id="staffOldPwd" class="admin-form-input" placeholder="Mot de passe actuel" />
+              <input type="password" id="staffNewPwd" class="admin-form-input" placeholder="Nouveau mot de passe (8 car. min)" />
+              <button id="staffChangePwdBtn" class="admin-action-btn primary">Modifier</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       GUIDE MODAL
+       - guide complet et stylisé du fonctionnement du site
+       =============================================================== -->
+  <div id="guideModal" class="modal-overlay" inert>
+    <div class="modal guide-modal">
+      <h2 class="modal-title" data-i18n="guideTitle">📖 Guide Wordbomb</h2>
+      
+      <div class="guide-scroll" id="guideContentContainer">
+        <!-- Le contenu du guide sera inséré ici dynamiquement par guide-content.js -->
+      </div>
+
+      <div class="btn-row">
+        <button id="closeGuide" class="btn-primary" data-i18n="understood">Compris !</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===============================================================
+       Inclusion du module de settings (applique thème / persiste choix)
+       - settings.js expose WBSettings
+       - chargé avant le script principal afin d'appliquer les réglages UI
+       =============================================================== -->
+  <script src="settings.js"></script>
+
+  <script>
+    /* =========================================================================
+       SCRIPT PRINCIPAL POUR INDEX.HTML (COMPLÈTEMENT COMMENTÉ EN FRANÇAIS)
+       - Ce script gère :
+         * le stockage local (rooms, profil, deaths)
+         * le rendu des listes (rooms, syllabes)
+         * la recherche (API ou fallback local)
+         * la gestion des modales (ouvrir/fermer)
+         * actions admin (POST /admin/*)
+       - Les commentaires expliquent le rôle de chaque fonction et leurs
+         interactions. Le comportement d'origine est préservé.
+       ========================================================================= */
+
+    // ==================== HELPERS SIMPLES ====================
+    const $ = sel => document.querySelector(sel);
+    const $all = sel => Array.from(document.querySelectorAll(sel));
+
+    // Normalise une chaîne en MAJUSCULES sans espaces superflus (utile pour les clés)
+    const normalizeS = s => String(s || '').trim().toUpperCase();
+
+    // Échappement HTML minimal pour éviter l'injection dans le rendu
+    const escapeHtml = s => String(s || '').replace(/[&<>"'`]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' }[m]));
+
+    // ########################
+    // Clés localStorage utilisées
+    // ########################
+    const DEATHS_KEY = 'wb_deaths_v1';
+    const PROFILE_KEY = 'wb_profile_v1';
+
+    function getDefaultGuestName() {
+      let guest = null;
+      try { guest = localStorage.getItem('wb_guest_name'); } catch(e) {}
+      if (!guest) {
+        guest = 'Guest' + (Math.floor(Math.random() * 9000) + 1000);
+        try { localStorage.setItem('wb_guest_name', guest); } catch(e) {}
+      }
+      return guest;
+    }
+    const ROOMS_KEY = 'wb_rooms_v1';
+    const SUBMISSIONS_KEY = 'wb_submissions_v1';
+
+    // ==================== AVATAR PAR DÉFAUT ====================
+    // Génère une dataURL canvas simple pour les profils sans avatar téléversé.
+    function generateInitialAvatar(char) {
+      const c = document.createElement('canvas');
+      c.width = 128;
+      c.height = 128;
+      const ctx = c.getContext('2d');
+      const grd = ctx.createLinearGradient(0, 0, 128, 128);
+      grd.addColorStop(0, '#5b47f0');
+      grd.addColorStop(1, '#7b68ee');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, 128, 128);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 64px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((char || 'T').toUpperCase(), 64, 64);
+      return c.toDataURL('image/png');
+    }
+
+    // ==================== STORAGE (rooms / profile / deaths) ====================
+    function loadRooms() {
+      try {
+        const raw = localStorage.getItem(ROOMS_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveRooms(rooms) {
+      try { localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms || [])); } catch (e) {}
+    }
+
+    function loadProfile() {
+      try {
+        const raw = localStorage.getItem(PROFILE_KEY);
+        const p = raw ? JSON.parse(raw) : null;
+        if (!p || !p.name) {
+          const _gn = getDefaultGuestName(); return { name: _gn, avatar: generateInitialAvatar(_gn[0]||'G'), coins: 0, gems: 0, heat: 0 };
+        }
+        return p;
+      } catch (e) {
+        const _gn2 = getDefaultGuestName(); return { name: _gn2, avatar: generateInitialAvatar(_gn2[0]||'G'), coins: 0, gems: 0, heat: 0 };
+      }
+    }
+
+    function saveProfile(profile) {
+      try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch (e) {}
+    }
+
+    function applyProfile(profile) {
+      const img = $('#profileImg');
+      if (img) img.src = profile.avatar || generateInitialAvatar((profile.name || 'T')[0]);
+    }
+
+    function loadDeaths() {
+      try {
+        const raw = localStorage.getItem(DEATHS_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw) || [];
+        const m = new Map();
+        for (const v of arr) {
+          const n = normalizeS(v);
+          if (!n) continue;
+          if (!m.has(n)) m.set(n, n);
+        }
+        return Array.from(m.keys());
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveDeaths(list) {
+      try {
+        const m = new Map();
+        for (const v of (list || [])) {
+          const n = normalizeS(v);
+          if (!n) continue;
+          if (!m.has(n)) m.set(n, n);
+        }
+        const out = Array.from(m.keys());
+        localStorage.setItem(DEATHS_KEY, JSON.stringify(out));
+      } catch (e) {
+        console.warn('saveDeaths', e);
+      }
+    }
+
+    function addDeath(syl) {
+      const n = normalizeS(syl);
+      if (!n) return;
+      const current = loadDeaths();
+      if (!current.includes(n)) {
+        current.push(n);
+        saveDeaths(current);
+        renderDeathsCategorized();
+      }
+    }
+
+    function removeDeath(syl) {
+      const n = normalizeS(syl);
+      if (!n) return;
+      const globalScrollY = window.scrollY || window.pageYOffset || 0;
+      let grid = null;
+      try {
+        const el = document.querySelector(`[data-syl="${syl}"]`);
+        if (el) grid = el.closest('.syllable-grid');
+      } catch (e) {}
+      const gridScrollTop = grid ? grid.scrollTop : null;
+      const current = loadDeaths();
+      const filtered = current.filter(x => x !== n);
+      saveDeaths(filtered);
+      renderDeathsCategorized();
+      setTimeout(() => {
+        try { window.scrollTo(0, globalScrollY); } catch (e) {}
+        try { if (grid && typeof gridScrollTop === 'number') grid.scrollTop = gridScrollTop; } catch (e) {}
+      }, 60);
+    }
+
+    // ==================== RENDU DES SALLES ====================
+    function renderRooms(roomsArg) {
+      const container = $('#roomsContainer');
+      const emptyState = $('#emptyState');
+      const rooms = roomsArg || loadRooms();
+
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!rooms || rooms.length === 0) {
+        if (emptyState) emptyState.style.display = 'block';
+        return;
+      }
+
+      if (emptyState) emptyState.style.display = 'none';
+
+      rooms.forEach(room => {
+        const isPlaying = room.gameState === 'playing';
+        const card = document.createElement('div');
+        card.className = 'room-card' + (isPlaying ? ' is-playing' : '');
+        card.onclick = () => { if (!isPlaying) joinRoom(room); };
+
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = 'room-avatar';
+        if (room.hostAvatar && room.hostAvatar.startsWith('data:image')) {
+          const img = document.createElement('img');
+          img.src = room.hostAvatar;
+          img.alt = room.host || 'Host';
+          avatarDiv.appendChild(img);
+        } else {
+          const span = document.createElement('span');
+          span.textContent = '🎮';
+          avatarDiv.appendChild(span);
+        }
+
+        const bodyDiv = document.createElement('div');
+        bodyDiv.className = 'room-body';
+
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'room-header';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'room-name';
+        nameDiv.textContent = room.name || 'Salle sans nom';
+
+        const hostDiv = document.createElement('div');
+        hostDiv.className = 'room-host';
+        hostDiv.textContent = `Hôte : ${room.host || 'Inconnu'}`;
+
+        headerDiv.appendChild(nameDiv);
+        if (isPlaying) {
+          const playingBadge = document.createElement('span');
+          playingBadge.className = 'room-playing-badge';
+          playingBadge.textContent = 'En jeu';
+          headerDiv.appendChild(playingBadge);
+        }
+        headerDiv.appendChild(hostDiv);
+
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'room-details';
+
+        const modeBadge = document.createElement('span');
+        modeBadge.className = 'room-badge';
+        modeBadge.textContent = room.mode || 'Original';
+
+        const langBadge = document.createElement('span');
+        langBadge.className = 'room-badge';
+        langBadge.textContent = room.language || '🇫🇷';
+
+        detailsDiv.appendChild(modeBadge);
+        detailsDiv.appendChild(langBadge);
+
+        const footerDiv = document.createElement('div');
+        footerDiv.className = 'room-footer';
+
+        const playersDiv = document.createElement('div');
+        playersDiv.className = 'room-players';
+        playersDiv.textContent = `${room.playerCount || room.players || 1}/${room.maxPlayers || 6} joueurs`;
+
+        const joinBtn = document.createElement('button');
+        joinBtn.className = 'btn-join' + (isPlaying ? ' disabled' : '');
+        joinBtn.textContent = isPlaying ? 'En cours' : 'Rejoindre';
+        joinBtn.disabled = isPlaying;
+        joinBtn.onclick = (e) => {
+          e.stopPropagation();
+          if (!isPlaying) joinRoom(room);
+        };
+
+        footerDiv.appendChild(playersDiv);
+        footerDiv.appendChild(joinBtn);
+
+        bodyDiv.appendChild(headerDiv);
+        bodyDiv.appendChild(detailsDiv);
+        bodyDiv.appendChild(footerDiv);
+
+        card.appendChild(avatarDiv);
+        card.appendChild(bodyDiv);
+
+        container.appendChild(card);
+      });
+    }
+
+    function joinRoom(room) {
+      // Toujours passer par Socket.IO si la salle a un ID serveur
+      if (room && room.id && String(room.id).startsWith('room_')) {
+        const profile = (() => { try { return JSON.parse(localStorage.getItem('wb_profile_v1')||'{}'); } catch(e){return{};} })();
+        const token = localStorage.getItem('wb_session_token');
+        if (token && window._wbSocket && window._wbSocket.connected) {
+          window._wbSocket.emit('joinRoom', {
+            roomId: room.id,
+            token: token,
+            playerData: { name: profile.name || getDefaultGuestName(), avatar: profile.avatar || '' }
+          });
+          return; // attendre l'event 'roomJoined' pour la redirection
+        }
+      }
+      // Fallback local
+      try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch(e) {}
+      window.location.href = 'room.html';
+    }
+
+    // ==================== SYLLABLE STATS FETCHER ====================
+    async function fetchSyllableStats() {
+      const candidates = getApiCandidates();
+      for (const base of candidates) {
+        try {
+          const [s2, s3, s4] = await Promise.all([
+            fetchWithTimeout(`${base.replace(/\/$/, '')}/syllable-stats?length=2`, {}, 2500).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetchWithTimeout(`${base.replace(/\/$/, '')}/syllable-stats?length=3`, {}, 2500).then(r => r.ok ? r.json() : null).catch(() => null),
+            fetchWithTimeout(`${base.replace(/\/$/, '')}/syllable-stats?length=4`, {}, 2500).then(r => r.ok ? r.json() : null).catch(() => null),
+          ]);
+          if (s2 || s3 || s4) return { 2: s2 || {}, 3: s3 || {}, 4: s4 || {} };
+        } catch (e) {
+          continue;
+        }
+      }
+      return { 2: {}, 3: {}, 4: {} };
+    }
+
+    function makeCountGetter(stats) {
+      return (length, syl) => {
+        try {
+          const L = Number(length);
+          const map = stats && stats[L];
+          if (!map) return null;
+          const k = normalizeS(syl);
+          if (k in map) return Number(map[k]) || 0;
+          if (k.toLowerCase() in map) return Number(map[k.toLowerCase()]) || 0;
+          return 0;
+        } catch (e) {
+          return null;
+        }
+      };
+    }
+
+    async function renderDeathsCategorized() {
+      const canonical = loadDeaths();
+      const containers = {
+        '4': $('#grid-4letters'),
+        'sub8': $('#grid-sub8'),
+        'sub50': $('#grid-sub50'),
+        'other': $('#grid-others')
+      };
+      const counters = {
+        '4': $('#cat-4letters-count'),
+        'sub8': $('#cat-sub8-count'),
+        'sub50': $('#cat-sub50-count'),
+        'other': $('#cat-others-count')
+      };
+
+      for (const k in containers) { if (containers[k]) containers[k].innerHTML = ''; }
+
+      const emptyNote = {
+        '4': '<div class="empty-note">Aucune syllabe 4 lettres.</div>',
+        'sub8': '<div class="empty-note">Aucun sub 1–8.</div>',
+        'sub50': '<div class="empty-note">Aucun sub 9–50.</div>',
+        'other': '<div class="empty-note">Aucune syllabe dans cette catégorie.</div>'
+      };
+
+      if (!canonical || canonical.length === 0) {
+        if (containers['4']) containers['4'].innerHTML = emptyNote['4'];
+        if (containers['sub8']) containers['sub8'].innerHTML = emptyNote['sub8'];
+        if (containers['sub50']) containers['sub50'].innerHTML = emptyNote['sub50'];
+        if (containers['other']) containers['other'].innerHTML = emptyNote['other'];
+        if (counters['4']) counters['4'].textContent = '0';
+        if (counters['sub8']) counters['sub8'].textContent = '0';
+        if (counters['sub50']) counters['sub50'].textContent = '0';
+        if (counters['other']) counters['other'].textContent = '0';
+        return;
+      }
+
+      for (const k in counters) { if (counters[k]) counters[k].textContent = '…'; }
+
+      const stats = await fetchSyllableStats().catch(() => ({ 2: {}, 3: {}, 4: {} }));
+      const getCount = makeCountGetter(stats);
+
+      const b4 = [], b8 = [], b50 = [], bo = [];
+      const seenInBuckets = new Set();
+
+      for (const syl of canonical) {
+        if (!syl) continue;
+        if (seenInBuckets.has(syl)) continue;
+
+        if (syl.length === 4) {
+          const cnt = getCount(4, syl);
+          b4.push({ syl, count: cnt });
+          seenInBuckets.add(syl);
+          continue;
+        }
+
+        const len = syl.length;
+        const cnt = (len >= 2 && len <= 4) ? getCount(len, syl) : null;
+
+        if (cnt === null || typeof cnt !== 'number') {
+          bo.push({ syl, count: cnt });
+          seenInBuckets.add(syl);
+        } else {
+          if (cnt >= 1 && cnt <= 8) {
+            b8.push({ syl, count: cnt });
+            seenInBuckets.add(syl);
+          } else if (cnt >= 9 && cnt <= 50) {
+            b50.push({ syl, count: cnt });
+            seenInBuckets.add(syl);
+          } else {
+            bo.push({ syl, count: cnt });
+            seenInBuckets.add(syl);
+          }
+        }
+      }
+
+      b4.sort((a, b) => a.syl.localeCompare(b.syl));
+      const sortByCountThenAlpha = (a, b) => {
+        const ca = (typeof a.count === 'number') ? a.count : Infinity;
+        const cb = (typeof b.count === 'number') ? b.count : Infinity;
+        if (ca !== cb) return ca - cb;
+        return a.syl.localeCompare(b.syl);
+      };
+      b8.sort(sortByCountThenAlpha);
+      b50.sort(sortByCountThenAlpha);
+      bo.sort(sortByCountThenAlpha);
+
+      function existsInContainer(container, syl) {
+        if (!container) return false;
+        const items = container.querySelectorAll('.syllable-chip');
+        for (const el of items) {
+          const ds = el.getAttribute('data-syl') || el.dataset.syl || '';
+          if (normalizeS(ds) === normalizeS(syl)) return true;
+        }
+        return false;
+      }
+
+      function appendUnique(container, item) {
+        if (!container) return;
+        if (existsInContainer(container, item.syl)) return;
+
+        const chip = document.createElement('div');
+        chip.className = 'syllable-chip';
+        chip.setAttribute('data-syl', item.syl);
+
+        const text = document.createElement('div');
+        text.className = 'syl-text';
+        text.textContent = item.syl;
+
+        const count = document.createElement('div');
+        count.className = 'syl-count';
+        count.textContent = (typeof item.count === 'number' && !isNaN(item.count)) ? `${item.count} mots` : 'inconnu';
+
+        const del = document.createElement('button');
+        del.className = 'del-syl';
+        del.title = 'Supprimer';
+        del.innerHTML = '✕';
+        del.addEventListener('click', (e) => {
+          e.stopPropagation();
+          chip.classList.add('removing');
+          setTimeout(() => removeDeath(item.syl), 120);
+        });
+
+        chip.appendChild(text);
+        chip.appendChild(count);
+        chip.appendChild(del);
+        container.appendChild(chip);
+      }
+
+      if (b4.length === 0) containers['4'].innerHTML = emptyNote['4'];
+      else b4.forEach(it => appendUnique(containers['4'], it));
+
+      if (b8.length === 0) containers['sub8'].innerHTML = emptyNote['sub8'];
+      else b8.forEach(it => appendUnique(containers['sub8'], it));
+
+      if (b50.length === 0) containers['sub50'].innerHTML = emptyNote['sub50'];
+      else b50.forEach(it => appendUnique(containers['sub50'], it));
+
+      if (bo.length === 0) containers['other'].innerHTML = emptyNote['other'];
+      else bo.forEach(it => appendUnique(containers['other'], it));
+
+      if (counters['4']) counters['4'].textContent = `${b4.length}`;
+      if (counters['sub8']) counters['sub8'].textContent = `${b8.length}`;
+      if (counters['sub50']) counters['sub50'].textContent = `${b50.length}`;
+      if (counters['other']) counters['other'].textContent = `${bo.length}`;
+    }
+
+    // ==================== SEARCH (API → fallback local) ====================
+    async function performSearch(query) {
+      const q = String(query || '').trim();
+      const resultsContainer = $('#searchResults');
+      if (!resultsContainer) return;
+
+      resultsContainer.innerHTML = '';
+
+      if (!q) {
+        resultsContainer.innerHTML = '<div class="search-no">Entrez un mot ou une syllabe pour lancer la recherche.</div>';
+        focusSearchInput();
+        return;
+      }
+
+      resultsContainer.innerHTML = '<div class="search-no">Recherche via API en cours…</div>';
+      if ($('#searchBtn')) $('#searchBtn').disabled = true;
+
+      const candidates = getApiCandidates();
+      let apiWorked = false;
+
+      for (const base of candidates) {
+        try {
+          const url = `${base.replace(/\/$/, '')}/search?q=${encodeURIComponent(q)}&limit=10`;
+          const res = await fetchWithTimeout(url, {}, 3000);
+          if (!res.ok) continue;
+
+          const json = await res.json();
+          const results = Array.isArray(json.results) ? json.results :
+            Array.isArray(json.words) ? json.words :
+              Array.isArray(json.data) ? json.data :
+                Array.isArray(json) ? json : [];
+
+          if (!results || results.length === 0) {
+            resultsContainer.innerHTML = '<div class="search-no">Aucun résultat via API. Recherche locale utilisée.</div>';
+            performSearchLocal(q, 10);
+            apiWorked = true;
+            break;
+          }
+
+          resultsContainer.innerHTML = '';
+          results.slice(0, 10).forEach(m => {
+            const row = document.createElement('div');
+            row.className = 'search-item';
+
+            const left = document.createElement('div');
+            const idx = String(m).toUpperCase().indexOf(q.toUpperCase());
+            let html = '';
+
+            if (idx >= 0) {
+              const a = escapeHtml(m.slice(0, idx));
+              const b = escapeHtml(m.slice(idx, idx + q.length));
+              const c = escapeHtml(m.slice(idx + q.length));
+              html = `${a}<mark class="search-hl">${b}</mark>${c}`;
+            } else {
+              html = escapeHtml(m);
+            }
+
+            left.innerHTML = html;
+
+            const meta = document.createElement('div');
+            meta.style.opacity = '0.7';
+            meta.style.fontSize = '13px';
+            meta.textContent = json.source ? json.source : (base.indexOf('localhost') !== -1 ? 'local-api' : 'api');
+
+            row.appendChild(left);
+            row.appendChild(meta);
+            resultsContainer.appendChild(row);
+          });
+
+          apiWorked = true;
+          break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!apiWorked) {
+        resultsContainer.innerHTML = '<div class="search-no">API indisponible — recherche locale utilisée.</div>';
+        performSearchLocal(q, 10);
+      }
+
+      if ($('#searchBtn')) $('#searchBtn').disabled = false;
+      focusSearchInput();
+    }
+
+    function performSearchLocal(query, limit = 10) {
+      const q = String(query || '').trim().toUpperCase();
+      const resultsContainer = $('#searchResults');
+      if (!resultsContainer) return;
+
+      resultsContainer.innerHTML = '';
+
+      if (!q) {
+        resultsContainer.innerHTML = '<div class="search-no">Entrez un mot ou une syllabe pour lancer la recherche.</div>';
+        focusSearchInput();
+        return;
+      }
+
+      const subs = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY) || '[]') || [];
+      const rooms = loadRooms() || [];
+      const roomNames = rooms.map(r => r.name || '').filter(Boolean);
+      const roomHosts = rooms.map(r => r.host || '').filter(Boolean);
+      const deaths = loadDeaths() || [];
+      const builtin = ['ARBRE', 'MAISON', 'VOITURE', 'ROUTE', 'TABLE', 'CHAIR', 'LIVRE', 'COURIR', 'MANGER'];
+
+      const combined = [].concat(subs, roomNames, roomHosts, builtin, deaths);
+      const seen = new Set();
+      const candidates = [];
+
+      for (const w of combined) {
+        const W = String(w || '').trim();
+        if (!W) continue;
+        const U = W.toUpperCase();
+        if (!seen.has(U)) {
+          seen.add(U);
+          candidates.push(W);
+        }
+      }
+
+      const matches = candidates.filter(w => String(w).toUpperCase().includes(q)).slice(0, limit);
+
+      if (matches.length === 0) {
+        resultsContainer.innerHTML = '<div class="search-no">Aucun résultat local trouvé.</div>';
+        focusSearchInput();
+        return;
+      }
+
+      matches.forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'search-item';
+
+        const left = document.createElement('div');
+        const idx = String(m).toUpperCase().indexOf(q);
+        let html = '';
+
+        if (idx >= 0) {
+          const a = escapeHtml(m.slice(0, idx));
+          const b = escapeHtml(m.slice(idx, idx + q.length));
+          const c = escapeHtml(m.slice(idx + q.length));
+          html = `${a}<mark class="search-hl">${b}</mark>${c}`;
+        } else {
+          html = escapeHtml(m);
+        }
+
+        left.innerHTML = html;
+
+        const meta = document.createElement('div');
+        meta.style.opacity = '0.7';
+        meta.style.fontSize = '13px';
+
+        const metaText = subs.map(x => x.toUpperCase()).includes(String(m).toUpperCase()) ? 'Mot soumis' :
+          (deaths.map(x => x.toUpperCase()).includes(String(m).toUpperCase()) ? 'Syllabe ratée' : 'Local');
+        meta.textContent = metaText;
+
+        row.appendChild(left);
+        row.appendChild(meta);
+        resultsContainer.appendChild(row);
+      });
+    }
+
+    function focusSearchInput() {
+      setTimeout(() => {
+        const si = $('#searchInput');
+        if (si) {
+          si.focus();
+          try { si.setSelectionRange(si.value.length, si.value.length); } catch (e) {}
+        }
+      }, 60);
+    }
+
+    function getApiCandidates() {
+      const list = [];
+      try {
+        const wb = localStorage.getItem('WB_API_BASE');
+        if (wb) list.push(wb.replace(/\/$/, ''));
+      } catch (e) {}
+      try { list.push(window.location.origin); } catch (e) {}
+      list.push('http://localhost:3000');
+      return Array.from(new Set(list));
+    }
+
+    async function fetchWithTimeout(url, opts = {}, timeout = 3000) {
+      const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      const signal = controller ? controller.signal : undefined;
+      const finalOpts = Object.assign({}, opts, { signal, mode: 'cors' });
+
+      if (controller) {
+        const id = setTimeout(() => controller.abort(), timeout);
+        try {
+          const res = await fetch(url, finalOpts);
+          clearTimeout(id);
+          return res;
+        } catch (e) {
+          clearTimeout(id);
+          throw e;
+        }
+      } else {
+        return fetch(url, finalOpts);
+      }
+    }
+
+    // ==================== DICTIONARY (admin endpoints) ====================
+    async function postJson(url, body) {
+      try {
+        // Ajouter le base URL du serveur API
+        const baseUrl = 'http://localhost:3000';
+        const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+        
+        const res = await fetch(fullUrl, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(body),
+          mode: 'cors' // Activer CORS explicitement
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw { status: res.status, body: json };
+        return json;
+      } catch (err) {
+        console.error('postJson error:', err);
+        throw err;
+      }
+    }
+
+    function setDicoStatus(msg, ok) {
+      const statusEl = $('#dicoStatus');
+      if (!statusEl) return;
+      statusEl.textContent = msg || '';
+      statusEl.style.color = ok ? '#4caf50' : '#ff6b6b';
+      setTimeout(() => {
+        if (statusEl) statusEl.style.color = 'var(--muted)';
+      }, 4000);
+    }
+
+    // ==================== MODALES (ouvrir/fermer) ====================
+    function openModal(modalId) {
+      const modal = $(`#${modalId}`);
+      if (modal) {
+        modal.classList.add('active');
+        modal.removeAttribute('inert');
+        document.body.style.overflow = 'hidden';
+      }
+    }
+
+    function closeModal(modalId) {
+      const modal = $(`#${modalId}`);
+      if (modal) {
+        modal.classList.remove('active');
+        modal.setAttribute('inert', '');
+        document.body.style.overflow = '';
+      }
+    }
+
+    // ==================== MENU (ouvrir / fermer / position) ====================
+    function positionMenu() {
+      try {
+        const menuBtn = $('#menuBtn');
+        const mainMenu = $('#mainMenu');
+        const rect = menuBtn.getBoundingClientRect();
+        const mRect = mainMenu.getBoundingClientRect();
+        const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+
+        let top = rect.bottom + 12;
+        let left = rect.left;
+
+        if (top + mRect.height > vh - 8) {
+          top = rect.top - mRect.height - 12;
+        }
+
+        mainMenu.style.top = `${top}px`;
+        mainMenu.style.left = `${left}px`;
+      } catch (e) {}
+    }
+
+    function closeMenuFn(suppressFocus) {
+      try {
+        const mainMenu = $('#mainMenu');
+        const menuBtn = $('#menuBtn');
+        mainMenu.style.display = 'none';
+        mainMenu.setAttribute('aria-hidden', 'true');
+        menuBtn.setAttribute('aria-expanded', 'false');
+
+        if (!suppressFocus) {
+          try { menuBtn.focus(); } catch (e) {}
+        }
+      } catch (e) {}
+    }
+
+    function openMenuFn() {
+      const mainMenu = $('#mainMenu');
+      const menuBtn = $('#menuBtn');
+      positionMenu();
+      mainMenu.style.display = 'block';
+      mainMenu.setAttribute('aria-hidden', 'false');
+      menuBtn.setAttribute('aria-expanded', 'true');
+    }
+
+    // ==================== TABS - activation ====================
+    function activateTab(tabName) {
+      $all('.tab').forEach(tab => tab.classList.remove('active'));
+      $all('.section').forEach(section => section.classList.remove('active'));
+
+      const tab = $(`#tab-${tabName}`);
+      const section = $(`#${tabName}Section`);
+
+      if (tab) tab.classList.add('active');
+      if (section) section.classList.add('active');
+
+      if (tabName === 'salles') renderRooms();
+      if (tabName === 'syllabes') renderDeathsCategorized();
+      if (tabName === 'search') {
+        focusSearchInput();
+        const sr = $('#searchResults');
+        if (sr && !sr.innerHTML) sr.innerHTML = '<div class="search-no">Tapez une syllabe ou un mot puis appuyez sur Entrée.</div>';
+      }
+    }
+
+    // ==================== INITIALISATION (DOM Ready) ====================
+    document.addEventListener('DOMContentLoaded', () => {
+      const profile = loadProfile();
+      applyProfile(profile);
+
+      // ---- WELCOME SETUP (première visite) ----
+      const SETUP_DONE_KEY = 'wb_profile_setup_done';
+      const setupDone = localStorage.getItem(SETUP_DONE_KEY);
+      const hasCustomName = profile && profile.name && !profile.name.startsWith('Guest');
+
+      function openWelcomeSetup() {
+        const modal = $('#welcomeSetupModal');
+        if (!modal) return;
+        modal.removeAttribute('inert');
+        modal.style.display = 'flex';
+        setTimeout(() => modal.classList.add('active'), 10);
+        setTimeout(() => $('#setupUsername')?.focus(), 100);
+      }
+
+      function closeWelcomeSetup() {
+        const modal = $('#welcomeSetupModal');
+        if (!modal) return;
+        modal.classList.remove('active');
+        setTimeout(() => { modal.style.display = 'none'; modal.setAttribute('inert', ''); }, 300);
+      }
+
+      if (!setupDone && !hasCustomName) {
+        openWelcomeSetup();
+      }
+
+      // Prévisualisation avatar
+      $('#setupAvatarInput')?.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = $('#setupAvatarImg');
+          const placeholder = $('#setupAvatarPlaceholder');
+          if (img) { img.src = ev.target.result; img.style.display = 'block'; }
+          if (placeholder) placeholder.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // Mise à jour de l'aperçu avatar avec l'initiale du pseudo saisi
+      $('#setupUsername')?.addEventListener('input', (e) => {
+        const val = e.target.value.trim();
+        const img = $('#setupAvatarImg');
+        if (img && img.style.display === 'none') {
+          // pas d'avatar uploadé, on ne fait rien (on générera à la confirmation)
+        }
+        // Effacer l'erreur quand l'utilisateur tape
+        const err = $('#setupUsernameError');
+        if (err && val.length >= 2) err.style.display = 'none';
+      });
+
+      $('#setupUsername')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') $('#setupConfirmBtn')?.click();
+      });
+
+      $('#setupConfirmBtn')?.addEventListener('click', () => {
+        const nameInput = $('#setupUsername');
+        const name = (nameInput?.value || '').trim();
+        const err = $('#setupUsernameError');
+
+        if (name.length < 2) {
+          if (err) err.style.display = 'block';
+          nameInput?.focus();
+          return;
+        }
+
+        // Récupérer avatar uploadé ou générer depuis l'initiale
+        const imgEl = $('#setupAvatarImg');
+        const avatar = (imgEl && imgEl.style.display !== 'none' && imgEl.src && imgEl.src.startsWith('data:'))
+          ? imgEl.src
+          : generateInitialAvatar(name[0]);
+
+        const newProfile = { name, avatar, coins: 0, gems: 0, heat: 0 };
+        saveProfile(newProfile);
+        applyProfile(newProfile);
+        localStorage.setItem(SETUP_DONE_KEY, '1');
+        closeWelcomeSetup();
+        renderRooms();
+      });
+
+      // Empêcher de fermer le popup en cliquant à l'extérieur (obligatoire)
+      $('#welcomeSetupModal')?.addEventListener('click', (e) => {
+        if (e.target === $('#welcomeSetupModal')) {
+          // Faire vibrer le bouton pour indiquer que c'est obligatoire
+          const btn = $('#setupConfirmBtn');
+          if (btn) { btn.classList.add('shake'); setTimeout(() => btn.classList.remove('shake'), 500); }
+        }
+      });
+
+      try {
+        if (window.WBSettings && typeof window.WBSettings.applyAll === 'function') {
+          window.WBSettings.applyAll();
+        }
+      } catch (e) {}
+
+      $('#menuBtn')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if ($('#mainMenu').style.display === 'block') closeMenuFn();
+        else openMenuFn();
+      });
+
+      $('#closeMenu')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeMenuFn();
+      });
+
+      document.addEventListener('click', (e) => {
+        const mainMenu = $('#mainMenu');
+        const menuBtn = $('#menuBtn');
+        if (!mainMenu) return;
+        if (mainMenu.contains(e.target) || e.target === menuBtn) return;
+        closeMenuFn(true);
+      });
+
+      window.addEventListener('resize', () => { if ($('#mainMenu').style.display === 'block') positionMenu(); });
+
+      $('#tab-salles')?.addEventListener('click', () => activateTab('salles'));
+      $('#tab-search')?.addEventListener('click', () => activateTab('search'));
+      $('#tab-syllabes')?.addEventListener('click', () => activateTab('syllabes'));
+      $('#tab-dico')?.addEventListener('click', () => activateTab('dico'));
+
+      $('#openCreateRoomBtn')?.addEventListener('click', () => {
+        const p = loadProfile();
+        if ($('#roomName')) $('#roomName').value = `${p.name}'s room` || 'Salle de jeu';
+        if ($('#hostName')) $('#hostName').value = p.name || getDefaultGuestName();
+
+        const rooms = loadRooms();
+        const existing = rooms.find(r => r.host === p.name);
+
+        if (existing) {
+          $('#createNotice').textContent = 'Vous avez déjà une salle active : vous ne pouvez pas créer plusieurs salles.';
+          $('#confirmCreate').disabled = true;
+        } else {
+          $('#createNotice').textContent = '';
+          $('#confirmCreate').disabled = false;
+        }
+
+        openModal('createRoomModal');
+      });
+
+      $('#confirmCreate')?.addEventListener('click', () => {
+        const roomName = ($('#roomName').value || 'Salle de jeu').trim();
+        const hostName = ($('#hostName').value || getDefaultGuestName()).trim();
+        const profile = loadProfile();
+        const hostAvatar = profile.avatar || generateInitialAvatar((hostName || 'T')[0]);
+
+        const roomsList = loadRooms();
+        const existing = roomsList.find(r => r.host === hostName);
+
+        if (existing) {
+          alert('Vous avez déjà une salle active.');
+          closeModal('createRoomModal');
+          return;
+        }
+
+        const room = {
+          id: Date.now(),
+          name: roomName,
+          host: hostName,
+          hostAvatar,
+          mode: 'Original',
+          language: '🇫🇷',
+          players: 1,
+          maxPlayers: 6,
+          createdAt: Date.now()
+        };
+
+        roomsList.unshift(room);
+        saveRooms(roomsList);
+        renderRooms();
+        closeModal('createRoomModal');
+
+        try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch (e) {}
+      });
+
+      $('#cancelCreate')?.addEventListener('click', () => closeModal('createRoomModal'));
+      $('#createRoomModal')?.addEventListener('click', (e) => { if (e.target === $('#createRoomModal')) closeModal('createRoomModal'); });
+
+      $('#quickPlayBtn')?.addEventListener('click', () => {
+        const profile = loadProfile();
+        const rooms = loadRooms();
+
+        const room = {
+          id: Date.now(),
+          name: 'Partie rapide',
+          host: profile.name,
+          hostAvatar: profile.avatar,
+          mode: 'Original',
+          language: '🇫🇷',
+          players: 1,
+          maxPlayers: 6,
+          createdAt: Date.now()
+        };
+
+        rooms.push(room);
+        saveRooms(rooms);
+
+        // Redirect handled by socket.on('roomCreated') - no manual redirect needed
+        // try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch (e) {}
+        // window.location.href = 'room.html';
+      });
+
+      $('#profileBtn')?.addEventListener('click', () => {
+        const p = loadProfile();
+        if ($('#profileName')) $('#profileName').value = p.name || getDefaultGuestName();
+        if ($('#avatarPreviewImg')) $('#avatarPreviewImg').src = p.avatar || generateInitialAvatar('T');
+        openModal('profileModal');
+      });
+
+      $('#avatarInput')?.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = $('#avatarPreviewImg');
+          if (img) img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      $('#saveProfile')?.addEventListener('click', () => {
+        const name = ($('#profileName').value || getDefaultGuestName()).trim();
+        const avatar = ($('#avatarPreviewImg').src && $('#avatarPreviewImg').src.length > 0) ?
+          $('#avatarPreviewImg').src : generateInitialAvatar((name || 'T')[0]);
+
+        const profile = { name, avatar, coins: 0, gems: 0, heat: 0 };
+
+        saveProfile(profile);
+        closeModal('profileModal');
+
+        const roomsList = loadRooms();
+        let changed = false;
+        for (let r of roomsList) {
+          if (r.host === profile.name) {
+            r.hostAvatar = profile.avatar;
+            changed = true;
+          }
+        }
+        if (changed) saveRooms(roomsList);
+        renderRooms();
+      });
+
+      $('#cancelProfile')?.addEventListener('click', () => closeModal('profileModal'));
+      $('#profileModal')?.addEventListener('click', (e) => { if (e.target === $('#profileModal')) closeModal('profileModal'); });
+
+      // Language modal handlers
+      $('#languageBtn')?.addEventListener('click', () => openModal('languageModal'));
+      $('#closeLanguage')?.addEventListener('click', () => closeModal('languageModal'));
+      $('#languageModal')?.addEventListener('click', (e) => { if (e.target === $('#languageModal')) closeModal('languageModal'); });
+      
+      document.querySelectorAll('.language-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.language-option').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const lang = btn.getAttribute('data-lang');
+          
+          // Changement instantané de la langue
+          if (window.i18n) {
+            window.i18n.setLanguage(lang);
+          }
+          
+          closeModal('languageModal');
+        });
+      });
+
+      // Guide modal handlers
+      $('#guideBtn')?.addEventListener('click', () => openModal('guideModal'));
+      $('#closeGuide')?.addEventListener('click', () => closeModal('guideModal'));
+      $('#guideModal')?.addEventListener('click', (e) => { if (e.target === $('#guideModal')) closeModal('guideModal'); });
+
+      // ==================== STAFF / ADMIN PANEL ====================
+      const STAFF_TOKEN_KEY = 'wb_staff_token';
+      const STAFF_USER_KEY  = 'wb_staff_user';
+
+      function getStaffToken() { try { return localStorage.getItem(STAFF_TOKEN_KEY); } catch(e) { return null; } }
+      function setStaffSession(token, user) {
+        try { localStorage.setItem(STAFF_TOKEN_KEY, token); localStorage.setItem(STAFF_USER_KEY, JSON.stringify(user)); } catch(e) {}
+      }
+      function clearStaffSession() {
+        try { localStorage.removeItem(STAFF_TOKEN_KEY); localStorage.removeItem(STAFF_USER_KEY); } catch(e) {}
+      }
+      function getStaffUser() { try { return JSON.parse(localStorage.getItem(STAFF_USER_KEY) || 'null'); } catch(e) { return null; } }
+
+      function showStaffError(id, msg) { const el = $(id); if (el) { el.textContent = msg; el.style.display = 'block'; } }
+      function hideStaffMsg(id) { const el = $(id); if (el) el.style.display = 'none'; }
+      function showStaffSuccess(id, msg) { const el = $(id); if (el) { el.textContent = msg; el.style.display = 'block'; setTimeout(() => { if(el) el.style.display='none'; }, 3000); } }
+
+      async function staffFetch(url, opts = {}) {
+        const token = getStaffToken();
+        opts.headers = Object.assign({ 'Content-Type': 'application/json', ...(token ? { 'x-staff-token': token } : {}) }, opts.headers || {});
+        return fetch(url, opts);
+      }
+
+      // ---- Login modal ----
+      $('#staffBtn')?.addEventListener('click', openStaffModal);
+      $('#staffModal')?.addEventListener('click', (e) => { if (e.target === $('#staffModal')) closeModal('staffModal'); });
+      $('#closeStaffLogin')?.addEventListener('click', () => closeModal('staffModal'));
+
+      $('#staffLoginBtn')?.addEventListener('click', async () => {
+        const username = $('#staffUsername')?.value.trim();
+        const password = $('#staffPassword')?.value;
+        if (!username || !password) { showStaffError('#staffLoginError', 'Remplis tous les champs'); return; }
+        hideStaffMsg('#staffLoginError');
+        try {
+          const res = await fetch('/staff/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const data = await res.json();
+          if (!res.ok) { showStaffError('#staffLoginError', data.error || 'Erreur'); return; }
+          setStaffSession(data.sessionToken, { username: data.username, role: data.role });
+          closeModal('staffModal');
+          openAdminPanel({ username: data.username, role: data.role });
+          document.dispatchEvent(new CustomEvent('staffRoleChanged', { detail: { role: data.role } }));
+        } catch(e) { showStaffError('#staffLoginError', 'Erreur réseau'); }
+      });
+      $('#staffPassword')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#staffLoginBtn')?.click(); });
+
+      async function openStaffModal() {
+        const token = getStaffToken();
+        if (token) {
+          try {
+            const res = await staffFetch('/staff/me');
+            if (res.ok) {
+              const user = await res.json();
+              setStaffSession(token, user);
+              openAdminPanel(user);
+              document.dispatchEvent(new CustomEvent('staffRoleChanged', { detail: { role: user.role } }));
+              return;
+            }
+          } catch(e) {}
+          clearStaffSession();
+        }
+        // Show login
+        if ($('#staffLoginError')) hideStaffMsg('#staffLoginError');
+        if ($('#staffUsername')) $('#staffUsername').value = '';
+        if ($('#staffPassword')) $('#staffPassword').value = '';
+        openModal('staffModal');
+      }
+
+      // ---- Admin Panel ----
+      let _adminPanelCurrentTab = 'requests';
+      let _adminPanelCurrentFilter = 'pending';
+      let _adminRequestsData = [];
+
+      function openAdminPanel(user) {
+        // Populate identity
+        const identity = $('#adminPanelIdentity');
+        if (identity) {
+          identity.innerHTML = '';
+          const avatar = document.createElement('div');
+          avatar.className = 'admin-panel-avatar';
+          avatar.textContent = (user.username || 'A')[0].toUpperCase();
+          const info = document.createElement('div');
+          info.className = 'admin-panel-user-info';
+          const nameEl = document.createElement('div');
+          nameEl.className = 'admin-panel-username';
+          nameEl.textContent = user.username;
+          const roleEl = document.createElement('div');
+          roleEl.className = 'admin-panel-role ' + (user.role === 'admin' ? 'admin' : 'staff');
+          roleEl.textContent = user.role === 'admin' ? '👑 Admin' : '🛡️ Staff';
+          info.appendChild(nameEl);
+          info.appendChild(roleEl);
+          identity.appendChild(avatar);
+          identity.appendChild(info);
+        }
+        openModal('adminPanelModal');
+        _switchAdminTab('requests');
+        _loadAdminRequests();
+        if (user.role === 'admin') {
+          document.querySelectorAll('.admin-nav-item[data-tab="accounts"], .admin-nav-item[data-tab="users"], .admin-nav-item[data-tab="bans"]').forEach(b => b.style.display = '');
+        } else {
+          document.querySelectorAll('.admin-nav-item[data-tab="accounts"], .admin-nav-item[data-tab="users"], .admin-nav-item[data-tab="bans"]').forEach(b => b.style.display = 'none');
+        }
+      }
+
+      $('#closeAdminPanel')?.addEventListener('click', () => closeModal('adminPanelModal'));
+      $('#adminPanelModal')?.addEventListener('click', (e) => { if (e.target === $('#adminPanelModal')) closeModal('adminPanelModal'); });
+
+      $('#adminPanelLogoutBtn')?.addEventListener('click', async () => {
+        await staffFetch('/staff/logout', { method: 'POST' }).catch(() => {});
+        clearStaffSession();
+        closeModal('adminPanelModal');
+        document.dispatchEvent(new CustomEvent('staffRoleChanged', { detail: { role: null } }));
+      });
+
+      // Navigation par onglets
+      document.querySelectorAll('.admin-nav-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab;
+          _switchAdminTab(tab);
+          if (tab === 'requests') _loadAdminRequests();
+          else if (tab === 'users') _loadAdminUsers();
+          else if (tab === 'bans') _loadAdminBans();
+          else if (tab === 'accounts') _loadStaffAccounts();
+        });
+      });
+
+      function _switchAdminTab(tab) {
+        _adminPanelCurrentTab = tab;
+        document.querySelectorAll('.admin-nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.toggle('active', c.id === 'adminTab-' + tab));
+      }
+
+      // ---- ONGLET DEMANDES ----
+      document.querySelectorAll('.admin-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          _adminPanelCurrentFilter = btn.dataset.filter;
+          document.querySelectorAll('.admin-filter-btn').forEach(b => b.classList.toggle('active', b === btn));
+          _renderAdminRequests();
+        });
+      });
+
+      $('#adminRequestsRefreshBtn')?.addEventListener('click', _loadAdminRequests);
+
+      async function _loadAdminRequests() {
+        const list = $('#adminRequestsList');
+        if (list) list.innerHTML = '<div class="admin-empty-state">⏳ Chargement...</div>';
+        try {
+          const res = await staffFetch('/admin/word-requests');
+          if (!res.ok) { if(list) list.innerHTML = '<div class="admin-empty-state">Accès refusé</div>'; return; }
+          _adminRequestsData = await res.json();
+          _renderAdminRequests();
+        } catch(e) { if(list) list.innerHTML = '<div class="admin-empty-state">Erreur réseau</div>'; }
+      }
+
+      function _renderAdminRequests() {
+        const list = $('#adminRequestsList');
+        if (!list) return;
+        const filter = _adminPanelCurrentFilter;
+        const items = filter === 'all' ? _adminRequestsData : _adminRequestsData.filter(r => r.status === filter);
+        const pending = _adminRequestsData.filter(r => r.status === 'pending');
+
+        // Update badge
+        const badge = $('#adminNavBadgeRequests');
+        const countEl = $('#adminFilterCountPending');
+        if (badge) { badge.textContent = pending.length; badge.style.display = pending.length > 0 ? 'flex' : 'none'; }
+        if (countEl) countEl.textContent = pending.length;
+
+        if (items.length === 0) {
+          list.innerHTML = '<div class="admin-empty-state">' + (filter === 'pending' ? '✅ Aucune demande en attente' : 'Aucune demande') + '</div>';
+          return;
+        }
+        list.innerHTML = '';
+        items.forEach(req => {
+          const card = document.createElement('div');
+          card.className = 'admin-request-card ' + req.status;
+          card.dataset.id = req.id;
+
+          const typeLabel = req.type === 'add' ? '➕ Ajouter' : '➖ Supprimer';
+          const typeClass = req.type === 'add' ? 'add' : 'remove';
+          const statusLabel = { pending: '⏳ En attente', approved: '✅ Approuvé', rejected: '❌ Refusé' }[req.status];
+          const time = new Date(req.submittedAt).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+
+          const wordEl = document.createElement('div');
+          wordEl.className = 'req-word';
+          wordEl.textContent = req.word;
+
+          const metaEl = document.createElement('div');
+          metaEl.className = 'req-meta';
+
+          const typeSpan = document.createElement('span');
+          typeSpan.className = 'req-type ' + typeClass;
+          typeSpan.textContent = typeLabel;
+
+          const bySpan = document.createElement('span');
+          bySpan.className = 'req-by';
+          bySpan.textContent = 'par ' + (req.submittedBy || 'Anonyme');
+
+          const timeSpan = document.createElement('span');
+          timeSpan.className = 'req-time';
+          timeSpan.textContent = time;
+
+          metaEl.appendChild(typeSpan);
+          metaEl.appendChild(bySpan);
+          metaEl.appendChild(timeSpan);
+
+          card.appendChild(wordEl);
+          card.appendChild(metaEl);
+
+          if (req.status === 'pending') {
+            const actions = document.createElement('div');
+            actions.className = 'req-actions';
+
+            const approveBtn = document.createElement('button');
+            approveBtn.className = 'req-btn approve';
+            approveBtn.textContent = '✅ Approuver';
+            approveBtn.addEventListener('click', () => _resolveRequest(req.id, 'approve', card));
+
+            const rejectBtn = document.createElement('button');
+            rejectBtn.className = 'req-btn reject';
+            rejectBtn.textContent = '❌ Refuser';
+            rejectBtn.addEventListener('click', () => _resolveRequest(req.id, 'reject', card));
+
+            actions.appendChild(approveBtn);
+            actions.appendChild(rejectBtn);
+            card.appendChild(actions);
+          } else {
+            const resolvedEl = document.createElement('div');
+            resolvedEl.className = 'req-resolved';
+            resolvedEl.textContent = statusLabel + (req.resolvedBy ? ` par ${req.resolvedBy}` : '');
+            card.appendChild(resolvedEl);
+          }
+
+          list.appendChild(card);
+        });
+      }
+
+      async function _resolveRequest(id, action, cardEl) {
+        if (cardEl) { cardEl.style.opacity = '0.5'; cardEl.style.pointerEvents = 'none'; }
+        try {
+          const res = await staffFetch(`/admin/word-requests/${id}/${action}`, { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) { alert(data.error || 'Erreur'); if(cardEl){cardEl.style.opacity='';cardEl.style.pointerEvents='';} return; }
+          // Update local data
+          const req = _adminRequestsData.find(r => r.id === id);
+          if (req) { req.status = action === 'approve' ? 'approved' : 'rejected'; req.resolvedBy = data.resolvedBy; }
+          _renderAdminRequests();
+        } catch(e) { alert('Erreur réseau'); if(cardEl){cardEl.style.opacity='';cardEl.style.pointerEvents='';} }
+      }
+
+      // Mise à jour temps réel des demandes via socket
+      window._onAdminWordRequestsUpdate = function({ pending }) {
+        if (!pending) return;
+        // Merge les updates dans _adminRequestsData
+        pending.forEach(p => {
+          const existing = _adminRequestsData.find(r => r.id === p.id);
+          if (!existing) _adminRequestsData.unshift(p);
+        });
+        if (_adminPanelCurrentTab === 'requests') _renderAdminRequests();
+        // Update badge même panel fermé
+        const badge = $('#adminNavBadgeRequests');
+        if (badge) { badge.textContent = pending.length; badge.style.display = pending.length > 0 ? 'flex' : 'none'; }
+      };
+
+      // ---- ONGLET UTILISATEURS ----
+      $('#adminUsersRefreshBtn')?.addEventListener('click', _loadAdminUsers);
+
+      async function _loadAdminUsers() {
+        const list = $('#adminUsersList');
+        if (!list) return;
+        list.innerHTML = '<div class="admin-empty-state">⏳ Chargement...</div>';
+        try {
+          const res = await staffFetch('/admin/users');
+          if (!res.ok) { list.innerHTML = '<div class="admin-empty-state">Accès refusé</div>'; return; }
+          const users = await res.json();
+          if (users.length === 0) { list.innerHTML = '<div class="admin-empty-state">Aucun utilisateur connecté</div>'; return; }
+          list.innerHTML = '';
+          users.forEach(u => {
+            const row = document.createElement('div');
+            row.className = 'admin-entity-row' + (u.banned ? ' banned' : '');
+            const avatarEl = document.createElement('div');
+            avatarEl.className = 'admin-entity-avatar';
+            if (u.avatar && u.avatar.startsWith('data:')) { const img = document.createElement('img'); img.src = u.avatar; img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%'; avatarEl.appendChild(img); }
+            else { avatarEl.textContent = (u.name||'?')[0].toUpperCase(); }
+            const info = document.createElement('div');
+            info.className = 'admin-entity-info';
+            const nameEl = document.createElement('div');
+            nameEl.className = 'admin-entity-name';
+            nameEl.textContent = u.name || 'Inconnu';
+            if (u.banned) { const tag = document.createElement('span'); tag.className='admin-banned-tag'; tag.textContent='Banni'; nameEl.appendChild(tag); }
+            const metaEl = document.createElement('div');
+            metaEl.className = 'admin-entity-meta';
+            metaEl.textContent = escapeHtmlAdmin(u.ip) + ' — ' + _relativeTime(u.lastSeen);
+            info.appendChild(nameEl); info.appendChild(metaEl);
+            const actions = document.createElement('div');
+            actions.className = 'admin-entity-actions';
+            if (!u.banned) {
+              const banBtn = document.createElement('button');
+              banBtn.className = 'req-btn reject small';
+              banBtn.textContent = '🚫 Bannir';
+              banBtn.addEventListener('click', async () => {
+                const reason = prompt(`Raison du bannissement de ${u.name || u.ip} ?`) || '';
+                const res2 = await staffFetch('/admin/ban', { method:'POST', body: JSON.stringify({ ip: u.ip, reason }) });
+                if (res2.ok) { const d = await res2.json(); alert(`Banni. ${d.kicked} socket(s) déconnecté(s).`); _loadAdminUsers(); }
+              });
+              actions.appendChild(banBtn);
+            } else {
+              const unbanBtn = document.createElement('button');
+              unbanBtn.className = 'req-btn approve small';
+              unbanBtn.textContent = '✅ Débannir';
+              unbanBtn.addEventListener('click', async () => {
+                const res2 = await staffFetch('/admin/ban/' + encodeURIComponent(u.ip), { method:'DELETE' });
+                if (res2.ok) _loadAdminUsers();
+              });
+              actions.appendChild(unbanBtn);
+            }
+            row.appendChild(avatarEl); row.appendChild(info); row.appendChild(actions);
+            list.appendChild(row);
+          });
+        } catch(e) { list.innerHTML = '<div class="admin-empty-state">Erreur réseau</div>'; }
+      }
+
+      // ---- ONGLET BANNIS ----
+      $('#adminBansRefreshBtn')?.addEventListener('click', _loadAdminBans);
+
+      async function _loadAdminBans() {
+        const list = $('#adminBansList');
+        if (!list) return;
+        list.innerHTML = '<div class="admin-empty-state">⏳ Chargement...</div>';
+        try {
+          const res = await staffFetch('/admin/bans');
+          if (!res.ok) { list.innerHTML = '<div class="admin-empty-state">Accès refusé</div>'; return; }
+          const bans = await res.json();
+          if (bans.length === 0) { list.innerHTML = '<div class="admin-empty-state">Aucun bannissement actif</div>'; return; }
+          list.innerHTML = '';
+          bans.forEach(b => {
+            const row = document.createElement('div');
+            row.className = 'admin-entity-row banned';
+            const avatarEl = document.createElement('div');
+            avatarEl.className = 'admin-entity-avatar danger';
+            avatarEl.textContent = '🚫';
+            const info = document.createElement('div');
+            info.className = 'admin-entity-info';
+            const nameEl = document.createElement('div');
+            nameEl.className = 'admin-entity-name';
+            nameEl.textContent = escapeHtmlAdmin(b.ip);
+            const metaEl = document.createElement('div');
+            metaEl.className = 'admin-entity-meta';
+            metaEl.textContent = (b.reason || 'Aucune raison') + ' — par ' + escapeHtmlAdmin(b.bannedBy||'?') + ' — ' + _relativeTime(b.bannedAt);
+            info.appendChild(nameEl); info.appendChild(metaEl);
+            const actions = document.createElement('div');
+            actions.className = 'admin-entity-actions';
+            const unbanBtn = document.createElement('button');
+            unbanBtn.className = 'req-btn approve small';
+            unbanBtn.textContent = '✅ Débannir';
+            unbanBtn.addEventListener('click', async () => {
+              const res2 = await staffFetch('/admin/ban/' + encodeURIComponent(b.ip), { method:'DELETE' });
+              if (res2.ok) _loadAdminBans();
+            });
+            actions.appendChild(unbanBtn);
+            row.appendChild(avatarEl); row.appendChild(info); row.appendChild(actions);
+            list.appendChild(row);
+          });
+        } catch(e) { list.innerHTML = '<div class="admin-empty-state">Erreur réseau</div>'; }
+      }
+
+      // ---- ONGLET COMPTES STAFF ----
+      async function _loadStaffAccounts() {
+        const list = $('#staffAccountsList');
+        if (!list) return;
+        list.innerHTML = '<div class="admin-empty-state">⏳ Chargement...</div>';
+        try {
+          const res = await staffFetch('/staff/list');
+          if (!res.ok) { list.innerHTML = '<div class="admin-empty-state">Accès refusé</div>'; return; }
+          const accounts = await res.json();
+          if (accounts.length === 0) { list.innerHTML = '<div class="admin-empty-state">Aucun compte</div>'; return; }
+          list.innerHTML = '';
+          accounts.forEach(acc => {
+            const row = document.createElement('div');
+            row.className = 'admin-entity-row';
+            const avatarEl = document.createElement('div');
+            avatarEl.className = 'admin-entity-avatar';
+            avatarEl.textContent = (acc.username||'?')[0].toUpperCase();
+            const info = document.createElement('div');
+            info.className = 'admin-entity-info';
+            const nameEl = document.createElement('div');
+            nameEl.className = 'admin-entity-name';
+            nameEl.textContent = acc.username;
+            const badge = document.createElement('span');
+            badge.className = 'staff-role-badge ' + (acc.role === 'admin' ? 'admin' : 'staff');
+            badge.textContent = acc.role === 'admin' ? '👑 Admin' : '🛡️ Staff';
+            nameEl.appendChild(badge);
+            const metaEl = document.createElement('div');
+            metaEl.className = 'admin-entity-meta';
+            metaEl.textContent = 'Créé le ' + (acc.createdAt ? new Date(acc.createdAt).toLocaleDateString('fr-FR') : '?') + (acc.createdBy ? ' par ' + escapeHtmlAdmin(acc.createdBy) : '');
+            info.appendChild(nameEl); info.appendChild(metaEl);
+            row.appendChild(avatarEl); row.appendChild(info);
+            if (acc.username !== 'admin') {
+              const actions = document.createElement('div');
+              actions.className = 'admin-entity-actions';
+              const delBtn = document.createElement('button');
+              delBtn.className = 'req-btn reject small';
+              delBtn.textContent = '✕ Supprimer';
+              delBtn.addEventListener('click', async () => {
+                if (!confirm(`Supprimer le compte "${acc.username}" ?`)) return;
+                const res2 = await staffFetch('/staff/delete/' + acc.username, { method:'DELETE' });
+                if (res2.ok) _loadStaffAccounts();
+                else { const d = await res2.json(); alert(d.error || 'Erreur'); }
+              });
+              actions.appendChild(delBtn);
+              row.appendChild(actions);
+            }
+            list.appendChild(row);
+          });
+        } catch(e) { list.innerHTML = '<div class="admin-empty-state">Erreur réseau</div>'; }
+      }
+
+      $('#createStaffBtn')?.addEventListener('click', async () => {
+        const username = $('#newStaffUsername')?.value.trim();
+        const password = $('#newStaffPassword')?.value;
+        const role = $('#newStaffRole')?.value;
+        if (!username || !password) { showStaffError('#adminCreateAccError', 'Remplis tous les champs'); return; }
+        hideStaffMsg('#adminCreateAccError');
+        try {
+          const res = await staffFetch('/staff/create', { method:'POST', body: JSON.stringify({ username, password, role }) });
+          const data = await res.json();
+          if (!res.ok) { showStaffError('#adminCreateAccError', data.error || 'Erreur'); return; }
+          if ($('#newStaffUsername')) $('#newStaffUsername').value = '';
+          if ($('#newStaffPassword')) $('#newStaffPassword').value = '';
+          showStaffSuccess('#adminCreateAccSuccess', `✅ Compte "${data.username}" créé !`);
+          _loadStaffAccounts();
+        } catch(e) { showStaffError('#adminCreateAccError', 'Erreur réseau'); }
+      });
+
+      // ---- ONGLET MON COMPTE ----
+      $('#staffChangePwdBtn')?.addEventListener('click', async () => {
+        const oldPwd = $('#staffOldPwd')?.value;
+        const newPwd = $('#staffNewPwd')?.value;
+        if (!oldPwd || !newPwd) { showStaffError('#adminPwdError', 'Remplis les deux champs'); return; }
+        hideStaffMsg('#adminPwdError');
+        try {
+          const res = await staffFetch('/staff/change-password', { method:'POST', body: JSON.stringify({ oldPassword: oldPwd, newPassword: newPwd }) });
+          const data = await res.json();
+          if (!res.ok) { showStaffError('#adminPwdError', data.error || 'Erreur'); return; }
+          if ($('#staffOldPwd')) $('#staffOldPwd').value = '';
+          if ($('#staffNewPwd')) $('#staffNewPwd').value = '';
+          showStaffSuccess('#adminPwdSuccess', '✅ Mot de passe modifié !');
+        } catch(e) { showStaffError('#adminPwdError', 'Erreur réseau'); }
+      });
+
+      // ---- Helpers ----
+      function _relativeTime(ts) {
+        if (!ts) return '—';
+        const diff = Date.now() - ts;
+        if (diff < 60000) return "À l'instant";
+        if (diff < 3600000) return `Il y a ${Math.floor(diff/60000)}min`;
+        if (diff < 86400000) return `Il y a ${Math.floor(diff/3600000)}h`;
+        return new Date(ts).toLocaleDateString('fr-FR');
+      }
+
+      function escapeHtmlAdmin(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      }
+
+      // Vérifier si déjà connecté au chargement (afficher bouton admin)
+      async function checkAndShowAdminBtn() {
+        const token = localStorage.getItem('wb_staff_token');
+        const b = $('#adminUsersBtn');
+        if (!token) { if(b) b.style.display = 'none'; return; }
+        try {
+          const res = await fetch('/staff/me', { headers: { 'x-staff-token': token } });
+          if (res.ok) {
+            const user = await res.json();
+            if (b) b.style.display = user.role === 'admin' ? '' : 'none';
+          } else {
+            // Token expiré (401) → le supprimer pour éviter des appels répétés au rechargement
+            if (res.status === 401) localStorage.removeItem('wb_staff_token');
+            if (b) b.style.display = 'none';
+          }
+        } catch(e) { if(b) b.style.display = 'none'; }
+      }
+      checkAndShowAdminBtn();
+      $('#adminUsersBtn')?.addEventListener('click', openStaffModal);
+
+      // Aussi vérifier après login/logout staff
+      const origShowStaffPanel = null; // legacy supprimé
+
+      let adminUsersCurrentTab = 'users';
+
+      function formatRelativeTime(ts) {
+        if (!ts) return '—';
+        const diff = Date.now() - ts;
+        if (diff < 60000) return 'À l\'instant';
+        if (diff < 3600000) return `Il y a ${Math.floor(diff/60000)}min`;
+        if (diff < 86400000) return `Il y a ${Math.floor(diff/3600000)}h`;
+        return new Date(ts).toLocaleDateString('fr-FR');
+      }
+
+      async function loadAdminUsers() {
+        const token = localStorage.getItem('wb_staff_token');
+        if (!token) return;
+        const list = $('#adminUsersList');
+        const subtitle = $('#adminUsersSubtitle');
+        if (list) list.innerHTML = '<div class="admin-loading">Chargement...</div>';
+        try {
+          const res = await fetch('/admin/users', { headers: { 'x-staff-token': token } });
+          if (!res.ok) { if (list) list.innerHTML = '<div class="admin-loading">Accès refusé</div>'; return; }
+          const users = await res.json();
+          if (subtitle) subtitle.textContent = `${users.length} utilisateur${users.length > 1 ? 's' : ''} récent${users.length > 1 ? 's' : ''}`;
+          if (!list) return;
+          if (users.length === 0) { list.innerHTML = '<div class="admin-loading">Aucun utilisateur dans les logs</div>'; return; }
+          if (subtitle) subtitle.textContent = `${users.length} utilisateur${users.length > 1 ? 's' : ''} (${users.filter(u=>u.online).length} en ligne)`;
+          list.innerHTML = '';
+          users.forEach(u => {
+            const row = document.createElement('div');
+            row.className = 'admin-user-row' + (u.banned ? ' banned' : '') + (u.online ? ' user-online' : '');
+            const avatarHTML = u.avatar && u.avatar.startsWith('data:')
+              ? `<img src="${u.avatar}" class="admin-user-avatar" alt="${u.name}" />`
+              : `<div class="admin-user-avatar-placeholder">${(u.name||'?')[0].toUpperCase()}</div>`;
+            const namesHtml = (u.allNames && u.allNames.length > 1)
+              ? `<div class="admin-user-names-history" title="Pseudos utilisés">🏷️ ${u.allNames.slice(-5).map(n=>escapeHtmlAdmin(n)).join(', ')}</div>`
+              : '';
+            const onlineDot = u.online ? '<span class="admin-online-dot" title="En ligne">●</span> ' : '';
+            const firstSeenHtml = u.firstSeen ? `Première visite: ${new Date(u.firstSeen).toLocaleDateString('fr-FR')} · ` : '';
+            row.innerHTML = `
+              <div class="admin-user-avatar-wrap">${avatarHTML}</div>
+              <div class="admin-user-info">
+                <div class="admin-user-name">${onlineDot}${escapeHtmlAdmin(u.name || 'Inconnu')}${u.banned ? ' <span class="admin-banned-tag">Banni</span>' : ''}</div>
+                ${namesHtml}
+                <div class="admin-user-meta">${firstSeenHtml}Vu ${formatRelativeTime(u.lastSeen)} · ${u.gamesPlayed||0} partie${(u.gamesPlayed||0)>1?'s':''}</div>
+              </div>
+              <div class="admin-user-ip">${escapeHtmlAdmin(u.ip)}</div>
+              <div class="admin-user-actions">
+                ${u.banned
+                  ? `<button class="admin-unban-btn" data-ip="${escapeHtmlAdmin(u.ip)}">Débannir</button>`
+                  : `<button class="admin-ban-btn" data-ip="${escapeHtmlAdmin(u.ip)}" data-name="${escapeHtmlAdmin(u.name||'?')}">Bannir</button>`
+                }
+              </div>
+            `;
+            list.appendChild(row);
+          });
+          attachBanHandlers(list);
+        } catch(e) { if (list) list.innerHTML = '<div class="admin-loading">Erreur réseau</div>'; }
+      }
+
+      async function loadAdminBans() {
+        const token = localStorage.getItem('wb_staff_token');
+        if (!token) return;
+        const list = $('#adminBansList');
+        if (list) list.innerHTML = '<div class="admin-loading">Chargement...</div>';
+        try {
+          const res = await fetch('/admin/bans', { headers: { 'x-staff-token': token } });
+          if (!res.ok) return;
+          const bans = await res.json();
+          if (!list) return;
+          if (bans.length === 0) { list.innerHTML = '<div class="admin-loading">Aucun bannissement actif</div>'; return; }
+          list.innerHTML = '';
+          bans.forEach(b => {
+            const row = document.createElement('div');
+            row.className = 'admin-user-row banned';
+            row.innerHTML = `
+              <div class="admin-user-avatar-wrap"><div class="admin-user-avatar-placeholder" style="background:#7f1d1d">🚫</div></div>
+              <div class="admin-user-info">
+                <div class="admin-user-name">${escapeHtmlAdmin(b.ip)}</div>
+                <div class="admin-user-meta">Par ${escapeHtmlAdmin(b.bannedBy||'?')} · ${escapeHtmlAdmin(b.reason||'')} · ${formatRelativeTime(b.bannedAt)}</div>
+              </div>
+              <div class="admin-user-ip"></div>
+              <div class="admin-user-actions">
+                <button class="admin-unban-btn" data-ip="${escapeHtmlAdmin(b.ip)}">Débannir</button>
+              </div>
+            `;
+            list.appendChild(row);
+          });
+          attachBanHandlers(list);
+        } catch(e) {}
+      }
+
+      function attachBanHandlers(container) {
+        const staffToken = localStorage.getItem('wb_staff_token');
+        container.querySelectorAll('.admin-ban-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const ip = btn.dataset.ip;
+            const name = btn.dataset.name || ip;
+            const reason = prompt(`Raison du bannissement de "${name}" (${ip}) :`);
+            if (reason === null) return; // annulé
+            const res = await fetch('/admin/ban', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-staff-token': staffToken },
+              body: JSON.stringify({ ip, reason: reason || 'Aucune raison précisée' })
+            });
+            const data = await res.json();
+            if (res.ok) { alert(`✅ ${ip} banni. ${data.kicked} socket(s) déconnecté(s).`); loadAdminUsers(); }
+            else alert('Erreur : ' + (data.error || 'Inconnue'));
+          });
+        });
+        container.querySelectorAll('.admin-unban-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const ip = btn.dataset.ip;
+            if (!confirm(`Débannir l'IP ${ip} ?`)) return;
+            const res = await fetch(`/admin/ban/${encodeURIComponent(ip)}`, {
+              method: 'DELETE',
+              headers: { 'x-staff-token': staffToken }
+            });
+            if (res.ok) { loadAdminUsers(); loadAdminBans(); }
+            else alert('Erreur lors du déban');
+          });
+        });
+      }
+
+      function escapeHtmlAdmin(str) {
+        return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      function openAdminUsersModal() {
+        openModal('adminUsersModal');
+        adminUsersCurrentTab = 'users';
+        $('#adminUsersView').style.display = '';
+        $('#adminBansView').style.display = 'none';
+        $('#adminUsersTabUsers').classList.add('active');
+        $('#adminUsersTabBans').classList.remove('active');
+        loadAdminUsers();
+      }
+
+      $('#adminUsersBtn')?.addEventListener('click', () => {
+        // Double vérification sécurité côté client
+        const token = localStorage.getItem('wb_staff_token');
+        if (!token) return;
+        openAdminUsersModal();
+      });
+
+      $('#closeAdminUsers')?.addEventListener('click', () => closeModal('adminUsersModal'));
+      $('#adminUsersModal')?.addEventListener('click', (e) => { if (e.target === $('#adminUsersModal')) closeModal('adminUsersModal'); });
+
+      $('#adminUsersRefreshBtn')?.addEventListener('click', () => {
+        if (adminUsersCurrentTab === 'users') loadAdminUsers();
+        else loadAdminBans();
+      });
+
+      $('#adminUsersTabUsers')?.addEventListener('click', () => {
+        adminUsersCurrentTab = 'users';
+        $('#adminUsersView').style.display = '';
+        $('#adminBansView').style.display = 'none';
+        $('#adminUsersTabUsers').classList.add('active');
+        $('#adminUsersTabBans').classList.remove('active');
+        loadAdminUsers();
+      });
+
+      $('#adminUsersTabBans')?.addEventListener('click', () => {
+        adminUsersCurrentTab = 'bans';
+        $('#adminUsersView').style.display = 'none';
+        $('#adminBansView').style.display = '';
+        $('#adminUsersTabUsers').classList.remove('active');
+        $('#adminUsersTabBans').classList.add('active');
+        loadAdminBans();
+      });
+
+      // Afficher/masquer le bouton admin après login/logout staff
+      document.addEventListener('staffRoleChanged', (e) => {
+        const btn = $('#adminUsersBtn');
+        if (btn) btn.style.display = (e.detail?.role === 'admin') ? '' : 'none';
+      });
+
+      $('#searchInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          performSearch($('#searchInput').value || '');
+        }
+      });
+
+      $('#searchBtn')?.addEventListener('click', () => { performSearch($('#searchInput') ? $('#searchInput').value : ''); });
+      $('#clearSearchBtn')?.addEventListener('click', () => { if ($('#searchInput')) $('#searchInput').value = ''; performSearch(''); });
+
+      $('#downloadDeathsBtn_main')?.addEventListener('click', () => {
+        const data = loadDeaths().join('\n');
+        const blob = new Blob([data], { type: 'text/plain;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'deaths_syllables.txt';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      });
+
+      $('#clearAllDeathsBtn')?.addEventListener('click', () => {
+        if (!confirm('Supprimer toutes les syllabes ratées ?')) return;
+
+        const globalScrollY = window.scrollY || window.pageYOffset || 0;
+        const grids = Array.from(document.querySelectorAll('.syllable-grid'));
+        const gridScrollTops = grids.map(g => g.scrollTop || 0);
+
+        saveDeaths([]);
+        renderDeathsCategorized();
+
+        setTimeout(() => {
+          try { window.scrollTo(0, globalScrollY); } catch (e) {}
+          try {
+            grids.forEach((g, i) => {
+              if (g && typeof gridScrollTops[i] === 'number') g.scrollTop = gridScrollTops[i];
+            });
+          } catch (e) {}
+        }, 80);
+      });
+
+      // ==================== WORD REQUEST SYSTEM ====================
+      let _dicoRequestType = 'add';
+      const _dicoRequestHistory = []; // session locale
+
+      function _setDicoRequestType(type) {
+        _dicoRequestType = type;
+        document.querySelectorAll('.dico-type-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.type === type);
+        });
+        const input = document.getElementById('dicoWordInput');
+        const lbl = document.getElementById('dicoSubmitBtnLabel');
+        if (input) input.placeholder = type === 'add' ? 'Mot à ajouter...' : 'Mot à supprimer...';
+        if (lbl) lbl.textContent = type === 'add' ? '➕ Soumettre' : '➖ Soumettre';
+      }
+
+      function _setDicoRequestStatus(msg, type = 'info') {
+        const el = document.getElementById('dicoRequestStatus');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'dico-request-status ' + type;
+        el.style.display = msg ? 'block' : 'none';
+        if (type !== 'error') setTimeout(() => { if(el) { el.style.display='none'; } }, 4000);
+      }
+
+      function _renderDicoRequestHistory() {
+        const container = document.getElementById('dicoRequestHistory');
+        if (!container) return;
+        if (_dicoRequestHistory.length === 0) {
+          container.innerHTML = '<div class="dico-history-empty">Aucune demande envoyée</div>';
+          return;
+        }
+        container.innerHTML = '';
+        _dicoRequestHistory.slice(0, 10).forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'dico-history-item';
+          const statusClass = { pending: 'pending', approved: 'approved', rejected: 'rejected' }[item.status] || 'pending';
+          const statusLabel = { pending: '⏳ En attente', approved: '✅ Approuvé', rejected: '❌ Refusé' }[item.status] || '⏳ En attente';
+          const typeLabel = item.type === 'add' ? '➕' : '➖';
+          row.innerHTML = `
+            <span class="dico-history-type">${typeLabel}</span>
+            <span class="dico-history-word">${escapeHtml(item.word)}</span>
+            <span class="dico-history-status ${statusClass}">${statusLabel}</span>
+          `;
+          container.appendChild(row);
+        });
+      }
+
+      document.getElementById('dicoTypeAdd')?.addEventListener('click', () => _setDicoRequestType('add'));
+      document.getElementById('dicoTypeRemove')?.addEventListener('click', () => _setDicoRequestType('remove'));
+
+      document.getElementById('dicoWordInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('dicoSubmitRequestBtn')?.click();
+      });
+
+      document.getElementById('dicoSubmitRequestBtn')?.addEventListener('click', async () => {
+        const input = document.getElementById('dicoWordInput');
+        if (!input) return;
+        const word = input.value.trim().toUpperCase();
+        if (!word) { _setDicoRequestStatus('Saisis un mot', 'error'); return; }
+        if (!/^[A-ZÀ-ÿÀ-ɏ-]+$/.test(word)) { _setDicoRequestStatus('Lettres uniquement', 'error'); return; }
+
+        const btn = document.getElementById('dicoSubmitRequestBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+        try {
+          const res = await fetch('/api/word-request', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: _dicoRequestType, word, submittedBy: (() => { try { return JSON.parse(localStorage.getItem('wb_profile_v1')||'{}').name || localStorage.getItem('wb_guest_name') || 'Anonyme'; } catch(e) { return 'Anonyme'; } })() })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            _setDicoRequestStatus(data.error || 'Erreur', 'error');
+          } else {
+            _setDicoRequestStatus(`Demande envoyée pour "${word}" — en attente de validation`, 'success');
+            input.value = '';
+            _dicoRequestHistory.unshift({ word, type: _dicoRequestType, status: 'pending', id: data.id });
+            _renderDicoRequestHistory();
+          }
+        } catch(e) {
+          _setDicoRequestStatus('Erreur réseau', 'error');
+        } finally {
+          const lbl = document.getElementById('dicoSubmitBtnLabel');
+          if (btn) { btn.disabled = false; }
+          if (lbl) lbl.textContent = _dicoRequestType === 'add' ? '➕ Soumettre' : '➖ Soumettre';
+        }
+      });
+
+      // Écouter les résolutions en temps réel via socket
+      // (le socket est défini plus bas dans le script Socket.IO)
+      window._onWordRequestResolved = function(data) {
+        const item = _dicoRequestHistory.find(r => r.id === data.id);
+        if (item) { item.status = data.status; _renderDicoRequestHistory(); }
+      };
+    });
+
+    window._syllableTools = {
+      loadDeaths,
+      saveDeaths,
+      addDeath,
+      removeDeath,
+      renderDeathsCategorized,
+      fetchSyllableStats
+    };
+    
+    // ==================== INITIALISATION DU GUIDE ET TRADUCTIONS ====================
+    // Initialiser le guide avec le contenu multilingue
+    function initializeGuide() {
+      if (typeof window.generateGuideHTML === 'function' && window.i18n) {
+        const guideContainer = document.getElementById('guideContentContainer');
+        if (guideContainer) {
+          guideContainer.innerHTML = window.generateGuideHTML(window.i18n.currentLang);
+        }
+      }
+    }
+    
+    // Initialiser le guide au chargement
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeGuide);
+    } else {
+      initializeGuide();
+    }
+    
+    // Réinitialiser le guide quand la langue change
+    if (window.i18n) {
+      window.i18n.onChange(() => {
+        initializeGuide();
+      });
+    }
+
+    // === Exposer fonctions globalement pour Socket.IO ===
+    window.renderRooms = renderRooms;
+    window.joinRoom = joinRoom;
+    window.closeModal = closeModal;
+  </script>
+
+  <!-- ========== SOCKET.IO MULTIJOUEUR ========== -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+  (function() {
+    'use strict';
+
+    // === Session token stable (UUID persistant en localStorage) ===
+    function getOrCreateToken() {
+      let token = localStorage.getItem('wb_session_token');
+      if (!token) {
+        token = 'tok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 12);
+        localStorage.setItem('wb_session_token', token);
+      }
+      return token;
+    }
+    const SESSION_TOKEN = getOrCreateToken();
+
+    // === Connexion Socket.IO ===
+    const socket = window._wbSocket = io(window.location.origin, {
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000
+    });
+
+    socket.on('banned', ({ reason }) => {
+      document.body.innerHTML = `
+        <div style="position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:Inter,sans-serif;">
+          <div style="text-align:center;padding:48px;max-width:480px">
+            <div style="font-size:64px;margin-bottom:20px">🚫</div>
+            <h1 style="font-size:28px;font-weight:900;color:#f87171;margin-bottom:12px">Accès refusé</h1>
+            <p style="color:#9ca3af;font-size:15px;line-height:1.6">Votre accès à Wordbomb a été suspendu.</p>
+            <p style="color:#6b7280;font-size:13px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.2);border-radius:10px;padding:12px 16px;margin-top:16px">
+              Raison : <strong style="color:#fca5a5">${reason || 'Aucune raison précisée'}</strong>
+            </p>
+          </div>
+        </div>`;
+      socket.disconnect();
+    });
+
+    socket.on('connect', () => {
+      console.log('✅ Socket.IO connecté:', socket.id);
+      console.log('%c\n' +
+        ' ██╗    ██╗ ██████╗ ██████╗ ██████╗ ██████╗  ██████╗ ███╗   ███╗██████╗ \n' +
+        ' ██║    ██║██╔═══██╗██╔══██╗██╔══██╗██╔══██╗██╔═══██╗████╗ ████║██╔══██╗\n' +
+        ' ██║ █╗ ██║██║   ██║██████╔╝██║  ██║██████╔╝██║   ██║██╔████╔██║██████╔╝\n' +
+        ' ██║███╗██║██║   ██║██╔══██╗██║  ██║██╔══██╗██║   ██║██║╚██╔╝██║██╔══██╗\n' +
+        ' ╚███╔███╔╝╚██████╔╝██║  ██║██████╔╝██████╔╝╚██████╔╝██║ ╚═╝ ██║██████╔╝\n' +
+        '  ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═════╝  ╚═════╝ ╚═╝     ╚═╝╚═════╝ \n',
+        'color: #f97316; font-family: monospace; font-size: 10px; line-height: 1.2; text-shadow: 0 0 8px #f97316;'
+      );
+      console.log('%c 💣  Prêt à exploser des syllabes ?  💣 ', 'background: #1a1a2e; color: #f97316; font-size: 14px; font-weight: bold; padding: 6px 16px; border-radius: 6px; border: 1px solid #f97316;');
+      // S'enregistrer avec le token de session stable
+      socket.emit('register', SESSION_TOKEN);
+      // Rafraîchir la liste des salles
+      socket.emit('getRooms');
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Socket.IO déconnecté:', reason);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('Socket.IO erreur connexion:', err.message);
+    });
+
+    // === Clés localStorage ===
+    const ROOMS_KEY = 'wb_rooms_v1';
+    const PROFILE_KEY = 'wb_profile_v1';
+
+    function getProfile() {
+      try { return JSON.parse(localStorage.getItem(PROFILE_KEY) || '{}'); } catch(e) { return {}; }
+    }
+
+    // === Réception de la liste des salles du serveur ===
+    // Temps réel — demandes dictionnaire
+    socket.on('wordRequestsUpdate', (data) => {
+      if (typeof window._onAdminWordRequestsUpdate === 'function') window._onAdminWordRequestsUpdate(data);
+    });
+    socket.on('wordRequestResolved', (data) => {
+      if (typeof window._onWordRequestResolved === 'function') window._onWordRequestResolved(data);
+    });
+
+    socket.on('roomsList', (rooms) => {
+      // Sauvegarder dans localStorage pour la compatibilité
+      try { localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms)); } catch(e) {}
+      // Déclencher un rendu si renderRooms existe
+      if (typeof window.renderRooms === 'function') {
+        window.renderRooms(rooms);
+      } else {
+        // Fallback : tenter de trouver renderRooms dans les closures
+        window._pendingRooms = rooms;
+      }
+    });
+
+    // === Salle créée ===
+    socket.on('roomCreated', (room) => {
+      console.log('Salle créée:', room.id);
+      try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch(e) {}
+      // Fermer le modal et rediriger
+      if (typeof window.closeModal === 'function') window.closeModal('createRoomModal');
+      window.location.href = `room.html?roomId=${room.id}`;
+    });
+
+    // === Salle rejointe (via clic sur carte) ===
+    socket.on('roomJoined', ({ room }) => {
+      try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch(e) {}
+      window.location.href = `room.html?roomId=${room.id}`;
+    });
+
+    socket.on('joinError', (msg) => {
+      alert('Impossible de rejoindre : ' + msg);
+    });
+
+    socket.on('roomDeleted', () => {
+      alert('Cette salle a été supprimée par l\'hôte.');
+    });
+
+    // === Surcharger les fonctions de lobby pour utiliser Socket.IO ===
+    // On attend que le DOM soit prêt pour patcher les fonctions
+    function patchLobbyFunctions() {
+      // Patch createRoom (bouton #confirmCreate)
+      const confirmCreate = document.querySelector('#confirmCreate');
+      if (confirmCreate) {
+        const clone = confirmCreate.cloneNode(true);
+        confirmCreate.parentNode.replaceChild(clone, confirmCreate);
+        clone.addEventListener('click', () => {
+          const roomName = (document.querySelector('#roomName') || {}).value || 'Salle de jeu';
+          const hostName = (document.querySelector('#hostName') || {}).value || getDefaultGuestName();
+          const profile = getProfile();
+
+          // Vérification locale (pas de double salle)
+          // Le serveur gère la vrai logique
+          socket.emit('createRoom', {
+            token: SESSION_TOKEN,
+            name: roomName.trim(),
+            host: hostName.trim(),
+            hostAvatar: profile.avatar || '',
+            scenario: null,
+            wpp: null
+          });
+        });
+      }
+
+      // Patch quickPlay
+      const quickPlayBtn = document.querySelector('#quickPlayBtn');
+      if (quickPlayBtn) {
+        const clone = quickPlayBtn.cloneNode(true);
+        quickPlayBtn.parentNode.replaceChild(clone, quickPlayBtn);
+        clone.addEventListener('click', () => {
+          const profile = getProfile();
+          socket.emit('createRoom', {
+            token: SESSION_TOKEN,
+            name: 'Partie rapide',
+            host: profile.name || getDefaultGuestName(),
+            hostAvatar: profile.avatar || '',
+            scenario: null,
+            wpp: null
+          });
+        });
+      }
+
+      // joinRoom est déjà géré directement dans la fonction locale (voir ci-dessus)
+      // plus besoin de surcharge ici
+
+      // Exposer renderRooms pour être appelé par socket event
+      // La version originale lit depuis localStorage, ce qui fonctionne car on l'update aussi
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => setTimeout(patchLobbyFunctions, 200));
+    } else {
+      setTimeout(patchLobbyFunctions, 200);
+    }
+
+    // Rafraîchissement périodique de la liste des salles
+    setInterval(() => {
+      if (socket.connected) socket.emit('getRooms');
+    }, 5000);
+
+  })();
+  </script>
+</body>
+</html>

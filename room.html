@@ -1,0 +1,3142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Wordbomb - Salle de jeu</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!--
+    Ajustements locaux :
+    - police Poppins pour les previews de saisie sous les joueurs
+    - styles locaux pour améliorer lisibilité et responsive
+  -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* Le .player-slot est position:absolute dans style.css — on n'override pas ça */
+    /* Le typing-preview utilise un positionnement absolu par rapport au slot */
+    .player-slot .typing-preview {
+      position: absolute;
+      bottom: -38px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: auto;
+      min-width: 60px;
+      max-width: 260px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+      z-index: 40;
+    }
+
+    /* Animation d'apparition sur le container, pas sur le tile */
+    .player-slot .typing-preview.typing-visible {
+      animation: typingAppear 0.18s ease forwards;
+    }
+
+    @keyframes typingAppear {
+      from { opacity: 0; transform: translateX(-50%) translateY(5px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    .player-slot .typing-preview .typing-tile {
+      font-family: 'Poppins', Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      line-height: 1.1;
+      letter-spacing: 0.8px;
+      padding: 5px 11px;
+      border-radius: 20px;
+      background: rgba(15, 20, 40, 0.92);
+      color: #c8dfff;
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.1);
+      max-width: 240px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      backdrop-filter: blur(6px);
+      /* Pas d'animation ici — géré sur le container */
+      transition: color 0.05s ease, border-color 0.05s ease;
+    }
+
+    /* Style "mot validé" — vert après soumission réussie */
+    .player-slot .typing-preview.typing-accepted .typing-tile {
+      color: #86efac;
+      border-color: rgba(74, 222, 128, 0.4);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5), 0 0 0 1px rgba(74,222,128,0.15);
+    }
+
+    .player-slot .typing-preview .typing-highlight {
+      color: #a78bfa;
+      font-weight: 800;
+    }
+
+    .player-slot .typing-preview:empty { display: none; }
+
+    .chat-message {
+      position: relative;
+    }
+
+    .reply-btn {
+      position: absolute;
+      right: 6px;
+      top: 6px;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.03);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+      transition: background .12s, color .12s;
+    }
+    .reply-btn:hover { background: rgba(99,102,241,0.08); color: #e6e8eb; }
+
+    /* Discord-style reply block */
+    .reply-quote {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      padding: 0 0 0 10px;
+      border-left: 2px solid rgba(99,102,241,0.6);
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .reply-quote:hover { border-left-color: rgba(99,102,241,1); }
+    .reply-quote-author {
+      font-size: 11px;
+      font-weight: 700;
+      color: rgba(99,102,241,0.85);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .reply-quote-text {
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      max-width: 200px;
+    }
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.03);
+      color: var(--muted);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:8px;
+      font-size:13px;
+    }
+    .chat-reply-preview .preview-text { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; max-width:70%; }
+    .chat-reply-preview .preview-cancel { background: transparent; border: none; color: var(--muted); cursor: pointer; font-size:18px; }
+
+    @media (max-width: 560px) {
+      .player-slot .typing-preview .typing-tile { font-size: 11px; padding: 4px 9px; max-width: 140px; }
+    }
+
+    /* ========== VICTORY POPUP STYLES — FUTURISTIC MINIMAL ========== */
+    .victory-popup {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 4, 12, 0.97);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      overflow: hidden;
+    }
+    .victory-popup.show { display: flex; }
+
+    /* Scanline overlay */
+    .victory-popup::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.07) 2px,
+        rgba(0,0,0,0.07) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Glow backdrop */
+    .victory-popup::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 40% at 50% 50%, rgba(99,102,241,0.12) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .victory-content {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      max-width: 480px;
+      width: 92%;
+      animation: victoryEnter 0.55s cubic-bezier(0.16,1,0.3,1);
+    }
+
+    @keyframes victoryEnter {
+      from { transform: scale(0.94) translateY(12px); opacity: 0; }
+      to   { transform: scale(1)    translateY(0);    opacity: 1; }
+    }
+
+    .victory-accent-bar {
+      width: 40px;
+      height: 2px;
+      background: rgba(99,102,241,0.8);
+      margin: 0 auto 28px;
+      border-radius: 2px;
+      box-shadow: 0 0 12px rgba(99,102,241,0.7);
+    }
+
+    .victory-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: rgba(99,102,241,0.7);
+      margin-bottom: 18px;
+    }
+
+    .victory-name {
+      font-size: 48px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -2px;
+      color: #fff;
+      margin-bottom: 6px;
+      text-shadow: 0 0 40px rgba(99,102,241,0.5);
+    }
+
+    .victory-sub {
+      font-size: 12px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.28);
+      margin-bottom: 36px;
+    }
+
+    .victory-stats {
+      display: flex;
+      gap: 1px;
+      justify-content: center;
+      margin-bottom: 36px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .victory-stat {
+      flex: 1;
+      padding: 16px 12px;
+      background: transparent;
+    }
+    .victory-stat + .victory-stat {
+      border-left: 1px solid rgba(255,255,255,0.05);
+    }
+    .victory-stat-value {
+      font-size: 32px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1;
+      letter-spacing: -1px;
+      margin-bottom: 4px;
+    }
+    .victory-stat-label {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.28);
+    }
+
+    .victory-progress-bar {
+      height: 2px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 2px;
+      overflow: hidden;
+      width: 100%;
+    }
+    .victory-progress-fill {
+      height: 100%;
+      background: rgba(99,102,241,0.7);
+      border-radius: 2px;
+      width: 100%;
+      transform-origin: left;
+      animation: victoryBarDrain 2.5s linear forwards;
+    }
+    @keyframes victoryBarDrain {
+      from { transform: scaleX(1); }
+      to   { transform: scaleX(0); }
+    }
+
+    .victory-confetti { position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:0; }
+    .confetti-piece {
+      position: absolute;
+      width: 5px; height: 9px;
+      top: -20px;
+      border-radius: 1px;
+      animation: confettiFall linear forwards;
+    }
+    @keyframes confettiFall {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 0.8; }
+      80%  { opacity: 0.6; }
+      100% { transform: translateY(105vh) rotate(720deg); opacity: 0; }
+    }
+
+    @media (max-width: 600px) {
+      .victory-name { font-size: 34px; }
+      .victory-stat-value { font-size: 24px; }
+    }
+  </style>
+
+  <!-- Scripts de traduction -->
+  <script src="translations.js"></script>
+</head>
+<body>
+
+  <!-- Left Sidebar -->
+  <div class="left-sidebar-modern">
+    <button id="leftBackBtn" class="sidebar-btn-modern" title="Retour à l'accueil" aria-label="Retour">
+      ←
+    </button>
+
+    <div class="sidebar-divider"></div>
+
+    <button id="startBtn" class="sidebar-btn-modern primary" title="Démarrer la partie" aria-label="Démarrer">
+      ▶️
+    </button>
+
+    <button id="playerCountBtn" class="sidebar-btn-modern" title="Joueurs" aria-label="Joueurs">
+      👥
+    </button>
+
+    <button id="modeBtn" class="sidebar-btn-modern" title="Mode de jeu" aria-label="Mode">
+      ⚙️
+    </button>
+
+    <div class="sidebar-divider"></div>
+
+    <button id="leftSettingsBtn" class="sidebar-btn-modern" title="Paramètres rapides" aria-label="Paramètres">
+      🔧
+    </button>
+
+    <button id="sysToggleLeft" class="sidebar-btn-modern" title="Messages système" aria-label="Messages système">
+      S
+    </button>
+
+    <div class="sidebar-spacer"></div>
+
+    <button id="chatToggleBtn" class="sidebar-btn-modern" title="Chat" aria-label="Chat">
+      💬
+    </button>
+  </div>
+
+  <!-- Player Count Modal -->
+  <div class="player-count-modal" id="playerCountModal">
+    <div class="player-count-label">Nombre de joueurs</div>
+    <div class="player-count-controls">
+      <button class="player-btn" id="playerRemoveBtn">−</button>
+      <div class="player-count-value" id="playerCount">1</div>
+      <button class="player-btn" id="playerAddBtn">+</button>
+    </div>
+  </div>
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="game-info">
+      <div class="game-info-item">
+        <span>Tour:</span>
+        <span class="game-info-value" id="topRoundCount">—</span>
+      </div>
+      <div class="game-info-item">
+        <span>⏱</span>
+        <span class="game-info-value" id="topTimer">00:00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Game Area -->
+  <div class="game-area">
+    <!-- Players Display -->
+    <div class="players-container" id="playersArea"></div>
+
+    <!-- Syllable Display -->
+    <div class="syllable-display" id="syllableBox">
+      <div class="syllable-label">Syllabe demandée</div>
+      <div class="syllable-value">
+        <span id="currentSyllable">--</span>
+        <span id="syllableCount" class="syllable-count-badge" style="display:none;">0</span>
+      </div>
+      <div id="syllableError" class="syllable-error-msg"></div>
+    </div>
+
+    <!-- Bomb -->
+    <div class="bomb-container" id="bombWrapper">
+      <div class="bomb-wrapper">
+        <div class="bomb-timer" aria-hidden="true">
+          <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timer bombe">
+            <circle class="bg" cx="100" cy="100" r="88"></circle>
+            <circle class="fg" id="bombCircle" cx="100" cy="100" r="88" stroke-dasharray="553" stroke-dashoffset="553"></circle>
+          </svg>
+        </div>
+        <div class="bomb" id="bombElem" title="Temps restant" role="img" aria-label="Bombe">
+          <div class="core">💣</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="input-container" id="submitArea">
+      <div class="input-wrapper">
+        <input id="wordInput" class="word-input" placeholder="Entrez votre mot..." autocomplete="off" />
+        <button id="wordSubmitBtn" class="submit-btn" data-i18n="submit">Envoyer</button>
+        <button id="suicideBtn" class="suicide-btn" title="Perdre une vie">💀</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="chat-panel" id="chatPanel">
+    <div class="chat-header">
+      <div class="chat-title">💬 Chat</div>
+      <button class="chat-toggle" onclick="wb.toggleChat()">−</button>
+    </div>
+
+    <div id="chatContainer" class="chat-messages" aria-live="polite"></div>
+
+    <div class="chat-input-area" id="chatInputAreaWrapper">
+      <div class="chat-input-box">
+        <input id="chatInput" class="chat-input-field" type="text" placeholder="Message..." data-i18n-attr='{"placeholder":"chatPlaceholder"}' />
+        <button class="emoji-button" title="Emoji">😊</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Victory Popup -->
+  <div id="victoryPopup" class="victory-popup">
+    <div class="victory-confetti" id="victoryConfetti"></div>
+    <div class="victory-content">
+      <div class="victory-accent-bar"></div>
+      <div class="victory-label" id="victoryLabel">Partie terminée</div>
+      <div class="victory-name" id="victoryWinner">—</div>
+      <div class="victory-sub" id="victorySub">remporte la partie</div>
+      <div class="victory-stats">
+        <div class="victory-stat">
+          <div class="victory-stat-value" id="victoryWords">0</div>
+          <div class="victory-stat-label">Mots</div>
+        </div>
+        <div class="victory-stat">
+          <div class="victory-stat-value" id="victoryDuration">0:00</div>
+          <div class="victory-stat-label">Durée</div>
+        </div>
+      </div>
+      <div class="victory-progress-bar">
+        <div class="victory-progress-fill" id="victoryProgressFill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsOverlay" class="settings-overlay" onclick="wb.handleSettingsOverlayClick(event)">
+    <div class="settings-modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <div style="display:flex; align-items:center; padding:12px 16px; border-bottom:0.6px solid var(--glass);">
+        <div style="flex:1; font-weight:900; color:var(--text);" data-i18n="settingsTitle">Paramètres de jeu</div>
+        <button class="close-btn" onclick="wb.closeSettingsModal()">✕</button>
+      </div>
+
+      <div class="modes-scroll">
+        <div class="mode-tile active" data-mode="Original">Original</div>
+      </div>
+
+      <div class="settings-body">
+        <div class="setting-row">
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div style="width:40px; height:40px; background:rgba(255,255,255,0.01); border-radius:8px; display:flex; align-items:center; justify-content:center;">📜</div>
+            <div>
+              <div style="font-weight:800;">Scénarios</div>
+              <div style="color:var(--muted); font-size:13px;"><span data-i18n="scenariosSubtitle">Choisir un scénario prédéfini</span></div>
+            </div>
+          </div>
+          <div><button id="scenarioPill" class="pill-btn">Aucun scénario</button></div>
+        </div>
+
+        <div class="setting-row">
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div style="width:40px; height:40px; background:rgba(255,255,255,0.01); border-radius:8px; display:flex; align-items:center; justify-content:center;">🧩</div>
+            <div>
+              <div style="font-weight:800;"><span data-i18n="wppTitle">WPP (subN)</span></div>
+              <div style="color:var(--muted); font-size:13px;"><span data-i18n="wppIncompatible">Incompatible avec les scénarios</span></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input id="wppNumber" class="pill-btn" type="number" min="1" max="500" placeholder="ex: 43" style="width:100px;"/>
+            <button class="pill-btn" onclick="wb.applyWPP()">Appliquer</button>
+            <button class="pill-btn" onclick="wb.clearWPP()" data-i18n="clear">Effacer</button>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div style="width:40px; height:40px; background:rgba(255,255,255,0.01); border-radius:8px; display:flex; align-items:center; justify-content:center;">🎯</div>
+            <div>
+              <div style="font-weight:800;"><span data-i18n="practiceMode">Mode Pratique</span></div>
+              <div style="color:var(--muted); font-size:13px;"><span data-i18n="noLifeLoss">Pas de perte de vie</span></div>
+            </div>
+          </div>
+          <label>
+            <input type="checkbox" id="practiceMode" onchange="wb.togglePractice()" />
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scenario Modal -->
+  <div id="scenarioOverlay" class="scenario-overlay" onclick="wb.handleScenarioOverlayClick(event)">
+    <div class="scenario-modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <div style="display:flex; align-items:center; padding:12px 16px; border-bottom:0.6px solid var(--glass);">
+        <div style="flex:1; font-weight:900;">Scénarios</div>
+        <button class="close-btn" onclick="wb.closeScenarioModal()">✕</button>
+      </div>
+      <div class="scenario-list">
+        <div class="scenario-item" data-scenario="none" data-i18n="noScenario">Aucun scénario</div>
+        <div class="scenario-item" data-scenario="4 lettres" data-i18n="scenario4letters">4 lettres</div>
+        <div class="scenario-item" data-scenario="sub8" data-i18n="scenarioSub8">sub8</div>
+        <div class="scenario-item" data-scenario="sub50" data-i18n="scenarioSub50">sub50</div>
+        <div class="scenario-item" data-scenario="train skip" id="trainSkipOption" data-i18n="scenarioTrainSkip">Train skip</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Train Skip Category Modal -->
+  <div id="trainSkipCategoryOverlay" class="scenario-overlay" onclick="wb.handleTrainSkipCategoryOverlayClick(event)">
+    <div class="scenario-modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <div style="display:flex; align-items:center; padding:12px 16px; border-bottom:0.6px solid var(--glass);">
+        <div style="flex:1; font-weight:900;">Train Skip - Choisir une catégorie</div>
+        <button class="close-btn" onclick="wb.closeTrainSkipCategoryModal()">✕</button>
+      </div>
+      <div class="scenario-list">
+        <div class="scenario-item" data-category="4letters" data-i18n="category4letters">4 lettres</div>
+        <div class="scenario-item" data-category="sub8" data-i18n="categorySub8">Sub8 (1-8 mots)</div>
+        <div class="scenario-item" data-category="sub50" data-i18n="categorySub50">Sub50 (9-50 mots)</div>
+        <div class="scenario-item" data-category="others" data-i18n="categoryOthers">Autres (51+ mots)</div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Left Settings Modal -->
+  <div id="leftSettingsOverlay" class="left-settings-overlay" onclick="wb.handleLeftSettingsOverlayClick(event)">
+    <div class="left-settings-modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <div style="display:flex; align-items:center; padding:12px; border-bottom:0.6px solid var(--glass); margin-bottom:12px;">
+        <div style="flex:1; font-weight:900;">Paramètres rapides</div>
+        <button class="close-btn" onclick="wb.closeLeftSettingsModal()">✕</button>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">Espace = Tiret + Envoyer</div>
+          <div class="small">Facilite la saisie</div>
+        </div>
+        <input type="checkbox" id="spaceAsDashSubmit" />
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label"><span data-i18n="extraTime">Secondes supplémentaires</span></div>
+          <div class="small">Ajouter du temps (0-10)</div>
+        </div>
+        <input type="number" id="extraTurnSeconds" min="0" max="10" value="0" style="width:70px; padding:6px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05); color:var(--text);" />
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">Vies de départ</div>
+          <div class="small">Nombre de vies (1-5)</div>
+        </div>
+        <input type="number" id="baseLives" min="1" max="5" value="2" style="width:70px; padding:6px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.05); color:var(--text);" />
+      </div>
+
+      <button class="pill-btn" style="width:100%; margin-top:12px;" onclick="wb.applyLeftSettings()">Appliquer</button>
+    </div>
+  </div>
+
+  <!-- Load external scripts -->
+  <script src="settings.js"></script>
+  <script src="gamecore.js"></script>
+
+  <!-- Main Room Logic -->
+  <script>
+  (function(global, doc){
+    'use strict';
+
+    const $ = (sel) => doc.querySelector(sel);
+    const $all = (sel) => Array.from(doc.querySelectorAll(sel));
+
+    const wb = global.wb = global.wb || {};
+
+    const ROOM_KEY = 'currentRoom';
+    const PROFILE_KEY = 'wb_profile_v1';
+    const LEFT_SETTINGS_KEY = 'wb_left_settings';
+    const DEATHS_KEY = 'wb_deaths_v1';
+    const GAME_INITIAL_LIVES = 2;
+
+    let players = [];
+    let turnIndex = 0;
+    let roundNum = 0;
+    let currentSyllable = '';
+    let gameRunning = false;
+    let roomData = { mode: 'Original', scenario: null, wpp: null, practiceMode: false };
+    let leftSettings = { spaceAsDashSubmit: false, extraTurnSeconds: 0, baseStartingLives: 2 };
+    let showSystemMessages = true;
+    let chatCollapsed = false;
+    let seenSyllables = new Set();
+    let coreHasSyllableStats = false;
+    let userApiBaseOverride = null;
+    let botMoveTimeout = null;
+    let autoSubmitMeta = { attempts: {}, scheduled: {} };
+    let initialPlayers = [];
+
+    let localPlayerId = null;
+    // Map nom → lives : source de vérité serveur, prime sur p.lives dans le rendu
+    const serverLives = new Map();
+    let currentReplyTarget = null;
+
+    const bombCircumference = 553;
+
+    function escapeHtml(text) { const div = doc.createElement('div'); div.textContent = text; return div.innerHTML; }
+    function escapeRegExp(str) { return String(str||'').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    function formatTime(d) { const h = String(d.getHours()).padStart(2,'0'); const m = String(d.getMinutes()).padStart(2,'0'); return `${h}:${m}`; }
+
+    function generateInitialAvatarCanvas(letter, size) {
+      const c = doc.createElement('canvas'); c.width = size; c.height = size;
+      const ctx = c.getContext('2d'); if (!ctx) return '';
+      const grad = ctx.createLinearGradient(0,0,size,size);
+      grad.addColorStop(0, '#5b47f0'); grad.addColorStop(1, '#8b6cf6');
+      ctx.fillStyle = grad; ctx.fillRect(0,0,size,size);
+      ctx.fillStyle = '#fff'; ctx.font = `bold ${size*0.5}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(String(letter||'A').toUpperCase(), size/2, size/2);
+      return c.toDataURL();
+    }
+
+    function getDefaultGuestName() {
+      // Générer un pseudo Guest unique et le persister pour ce navigateur
+      let guest = null;
+      try { guest = localStorage.getItem('wb_guest_name'); } catch(e) {}
+      if (!guest) {
+        guest = 'Guest' + (Math.floor(Math.random() * 9000) + 1000);
+        try { localStorage.setItem('wb_guest_name', guest); } catch(e) {}
+      }
+      return guest;
+    }
+    function getLocalProfileName() { try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY)||'{}'); return p.name || getDefaultGuestName(); } catch(e){ return getDefaultGuestName(); } }
+    function getLocalProfileAvatar() { try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY)||'{}'); const n = p.name || getDefaultGuestName(); return p.avatar || generateInitialAvatarCanvas(n[0]||'G',128); } catch(e){ return generateInitialAvatarCanvas('G',128); } }
+
+    function loadRoomData() {
+      try { const raw = localStorage.getItem(ROOM_KEY); if (!raw) return; roomData = Object.assign(roomData, JSON.parse(raw)); } catch(e){}
+      const pm = $('#practiceMode'); if (pm) pm.checked = !!roomData.practiceMode;
+      const wppInput = $('#wppNumber'); if (wppInput && roomData.wpp) wppInput.value = roomData.wpp;
+      if (roomData.scenario && roomData.scenario !== 'none') { const pill = $('#scenarioPill'); if (pill) pill.textContent = roomData.scenario; }
+    }
+
+    function appendChatMessage({ type, author, text, ts, avatar, replyTo, id, staffRole }) {
+      const container = $('#chatContainer'); if (!container) return;
+      ts = ts || Date.now();
+      const msgId = id || `msg-${Date.now()}-${Math.floor(Math.random()*9999)}`;
+
+      if (type === 'system') {
+        const msg = doc.createElement('div'); msg.className = 'chat-message chat-system'; msg.id = msgId;
+        const body = doc.createElement('div'); body.className = 'chat-body';
+        const meta = doc.createElement('div'); meta.className = 'chat-meta';
+        const timeEl = doc.createElement('span'); timeEl.className='chat-time'; timeEl.textContent = formatTime(new Date(ts)); meta.appendChild(timeEl);
+        const textEl = doc.createElement('div'); textEl.className='chat-text'; textEl.textContent = escapeHtml(String(text||''));
+        body.appendChild(meta); body.appendChild(textEl);
+        msg.appendChild(body); if (!showSystemMessages) msg.style.display = 'none';
+        container.appendChild(msg); container.scrollTop = container.scrollHeight;
+        return;
+      }
+
+      const msg = doc.createElement('div'); msg.className = `chat-message ${type === 'bot' ? 'chat-bot' : (type === 'user' ? 'chat-user' : '')}`; msg.id = msgId;
+      const avatarEl = doc.createElement('div'); avatarEl.className='chat-avatar';
+      if (avatar) {
+        if (avatar.startsWith('data:') || avatar.startsWith('http')) { const img = doc.createElement('img'); img.src = avatar; img.alt = author+' avatar'; img.style.width='100%'; img.style.height='100%'; img.style.objectFit='cover'; avatarEl.innerHTML=''; avatarEl.appendChild(img); }
+        else avatarEl.textContent = author && author[0] ? author[0].toUpperCase() : 'U';
+      } else avatarEl.textContent = author && author[0] ? author[0].toUpperCase() : (type === 'bot' ? 'TB' : 'U');
+
+      const body = doc.createElement('div'); body.className='chat-body';
+      const meta = doc.createElement('div'); meta.className='chat-meta';
+      const timeEl = doc.createElement('span'); timeEl.className='chat-time'; timeEl.textContent = formatTime(new Date(ts));
+      const authorEl = doc.createElement('span'); authorEl.className='chat-author'; authorEl.textContent = author || (type === 'bot' ? 'TokiBot' : 'Utilisateur');
+      meta.appendChild(timeEl); meta.appendChild(authorEl);
+
+      // Badge staff/admin
+      if (staffRole === 'admin') {
+        const badge = doc.createElement('span'); badge.className = 'chat-staff-badge admin'; badge.title = 'Administrateur'; badge.textContent = '👑';
+        meta.appendChild(badge);
+      } else if (staffRole === 'staff') {
+        const badge = doc.createElement('span'); badge.className = 'chat-staff-badge staff'; badge.title = 'Staff'; badge.textContent = '⚔️';
+        meta.appendChild(badge);
+      }
+
+      if (replyTo && replyTo.author && replyTo.excerpt) {
+        const quote = doc.createElement('div'); quote.className = 'reply-quote';
+        // Lien vers le message ciblé
+        if (replyTo.id) {
+          quote.style.cursor = 'pointer';
+          quote.addEventListener('click', () => {
+            const target = document.getElementById(replyTo.id);
+            if (target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.style.outline = '1px solid rgba(99,102,241,0.5)'; setTimeout(() => target.style.outline = '', 1200); }
+          });
+        }
+        const qAuthor = doc.createElement('span'); qAuthor.className = 'reply-quote-author'; qAuthor.textContent = replyTo.author;
+        const qText = doc.createElement('span'); qText.className = 'reply-quote-text';
+        // Tronquer à ~80 chars pour rester compact
+        const excerptShort = String(replyTo.excerpt || '').slice(0, 80) + (String(replyTo.excerpt || '').length > 80 ? '…' : '');
+        qText.textContent = excerptShort;
+        quote.appendChild(qAuthor); quote.appendChild(qText);
+        body.appendChild(meta);
+        body.appendChild(quote);
+      } else {
+        body.appendChild(meta);
+      }
+
+      const textEl = doc.createElement('div'); textEl.className='chat-text'; textEl.innerHTML = escapeHtml(String(text||''));
+      body.appendChild(textEl);
+
+      msg.appendChild(avatarEl); msg.appendChild(body);
+
+      if (type === 'user' || type === 'bot') {
+        const replyBtn = doc.createElement('button');
+        replyBtn.className = 'reply-btn';
+        replyBtn.title = 'Répondre';
+        replyBtn.innerHTML = '↩';
+        replyBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setChatReply({ id: msgId, author: author || 'Utilisateur', excerpt: String(text||'').slice(0, 120) });
+        });
+        msg.appendChild(replyBtn);
+      }
+
+      // Grouper les messages consécutifs du même auteur (dans les 60s)
+      const lastMsg = container.lastElementChild;
+      const isGrouped = lastMsg && !lastMsg.classList.contains('chat-system') &&
+        lastMsg.dataset.author === author &&
+        (ts - parseInt(lastMsg.dataset.ts || '0')) < 60000;
+
+      if (isGrouped) {
+        msg.classList.add('grouped');
+      }
+
+      msg.dataset.author = author || '';
+      msg.dataset.ts = String(ts);
+
+      container.appendChild(msg);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function setChatReply(target) {
+      currentReplyTarget = target || null;
+      renderChatReplyPreview();
+      const input = $('#chatInput');
+      if (input) { input.focus(); try { input.setSelectionRange(input.value.length, input.value.length); } catch(e){} }
+    }
+    function clearChatReply() { currentReplyTarget = null; renderChatReplyPreview(); }
+
+    function renderChatReplyPreview() {
+      const wrapper = $('#chatInputAreaWrapper');
+      if (!wrapper) return;
+      const existing = wrapper.querySelector('.chat-reply-preview');
+      if (existing) existing.remove();
+      if (!currentReplyTarget) return;
+      const preview = doc.createElement('div');
+      preview.className = 'chat-reply-preview';
+      const left = doc.createElement('div'); left.className = 'preview-left';
+      const author = doc.createElement('div'); author.style.fontWeight = '800'; author.style.marginBottom = '4px'; author.textContent = `Répond à ${currentReplyTarget.author}`;
+      const excerpt = doc.createElement('div'); excerpt.className = 'preview-text'; excerpt.textContent = currentReplyTarget.excerpt;
+      left.appendChild(author); left.appendChild(excerpt);
+      const cancel = doc.createElement('button'); cancel.className = 'preview-cancel'; cancel.innerHTML = '✕';
+      cancel.title = 'Annuler la réponse';
+      cancel.addEventListener('click', () => { clearChatReply(); });
+      preview.appendChild(left); preview.appendChild(cancel);
+      wrapper.insertBefore(preview, wrapper.firstChild);
+    }
+
+    function sendSystemChat(text) { const t = String(text||''); const suppressed = ['API détectée:', 'prêt.', 'Syllable-stats']; for (const s of suppressed) if (t.includes(s)) return; appendChatMessage({ type:'system', text }); }
+    function sendBotChat(text, replyTo) { appendChatMessage({ type:'bot', author:'TokiBot', text:String(text||''), avatar:'', replyTo }); }
+    function sendUserChat(author, text, avatar, replyTo) { appendChatMessage({ type:'user', author: author || getLocalProfileName(), text: String(text||''), avatar: avatar || '', replyTo }); }
+
+    function setupChatHandlers() {
+      const chatInput = $('#chatInput'); if (!chatInput) return;
+      chatInput.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const msg = chatInput.value.trim(); if (!msg) { chatInput.value=''; clearChatReply(); return; }
+          const cmdMatch = msg.match(/^[\/\.]c\s+(.+)/i);
+          if (cmdMatch) { const syl = cmdMatch[1].trim(); await handleChatCommand(syl); chatInput.value=''; clearChatReply(); return; }
+          const replyMeta = currentReplyTarget ? { id: currentReplyTarget.id, author: currentReplyTarget.author, excerpt: currentReplyTarget.excerpt } : null;
+          sendUserChat(getLocalProfileName(), msg, getLocalProfileAvatar(), replyMeta);
+          chatInput.value='';
+          clearChatReply();
+        }
+      });
+
+      const emojiBtn = doc.querySelector('.emoji-button');
+      if (emojiBtn) emojiBtn.addEventListener('click', () => {
+        const ci = $('#chatInput'); if (ci) { ci.value = (ci.value || '') + ' 😊'; ci.focus(); }
+      });
+
+      // Rendre toute la zone de chat cliquable pour focus l'input
+      const chatWrapper = $('#chatInputAreaWrapper');
+      if (chatWrapper) {
+        chatWrapper.addEventListener('click', function(e) {
+          // Ne pas interférer si on clique sur le bouton emoji ou directement sur l'input
+          if (e.target.closest('.emoji-button') || e.target === chatInput) return;
+          if (chatInput) chatInput.focus();
+        });
+        // Ajouter un style de curseur pour indiquer que c'est cliquable
+        chatWrapper.style.cursor = 'text';
+      }
+    }
+
+    async function handleChatCommand(syllable) {
+      if (!syllable) return;
+      try {
+        const baseUrl = userApiBaseOverride || localStorage.getItem('WB_API_BASE') || `${window.location.origin}`;
+        const url = `${baseUrl.replace(/\/$/,'')}/words-by-syllable?syl=${encodeURIComponent(syllable)}&length=${Math.max(2,syllable.length)}&limit=10`;
+        const res = await fetch(url, { mode: 'cors' });
+        if (!res.ok) throw new Error('API error');
+        const json = await res.json();
+        let words = [];
+        if (Array.isArray(json.words)) words = json.words;
+        else if (Array.isArray(json.results)) words = json.results;
+        else if (Array.isArray(json.data)) words = json.data;
+        else if (Array.isArray(json)) words = json;
+        const responseText = words && words.length
+          ? `Mots trouvés (${words.length}): ${words.slice(0,10).map(w=>String(w).toUpperCase()).join(', ')}`
+          : `Aucun mot trouvé pour "${syllable}".`;
+        _broadcastBotMessage(responseText);
+      } catch (e) {
+        _broadcastBotMessage(`Erreur: ${e.message}`);
+      }
+    }
+
+    // Envoie un message TokiBot à tous les joueurs via socket, avec fallback local
+    function _broadcastBotMessage(text) {
+      const _sock = window._wbSocket;
+      const _roomId = window._wbRoomId
+        || new URLSearchParams(window.location.search).get('roomId')
+        || (window.currentRoom && window.currentRoom.id);
+      if (_sock && _sock.connected && _roomId) {
+        // Envoyer via socket → tous les joueurs verront le message
+        _sock.emit('chatMessage', {
+          roomId: _roomId,
+          message: text,
+          playerName: 'TokiBot',
+          avatar: '',
+          isBot: true,
+          replyTo: null,
+          staffToken: null
+        });
+      } else {
+        // Fallback : affichage local seulement (mode solo)
+        sendBotChat(text);
+      }
+    }
+
+    function renderPlayers() {
+      const area = $('#playersArea'); if (!area) return;
+      area.innerHTML = '';
+      players.forEach(p => area.appendChild(playerSlotFor(p)));
+      updateTypingUI();
+      arrangePlayersCircle(); positionSyllableAboveBomb();
+    }
+
+    function playerSlotFor(p) {
+      const slot = doc.createElement('div');
+      slot.className = 'player-slot' + (p.isHost ? ' host' : '') + (p.disconnected ? ' player-disconnected' : '');
+      const effectiveLocalId = window._localPlayerId || localPlayerId;
+      if (p.id === effectiveLocalId) slot.classList.add('local-player');
+      if (gameRunning && players[turnIndex] && players[turnIndex].id === p.id) slot.classList.add('active');
+      slot.dataset.playerId = p.id;
+      slot.dataset.playerName = p.name;
+      if (p._serverToken) slot.dataset.playerToken = p._serverToken;
+
+      const avatar = doc.createElement('div'); avatar.className = 'player-avatar';
+      if (p.isBot) { avatar.style.background = '#000'; avatar.style.border = '1px solid rgba(0,0,0,0)'; avatar.innerHTML = ''; }
+      else { if (p.avatar) { const img = doc.createElement('img'); img.src = p.avatar; img.alt = `${p.name} avatar`; avatar.appendChild(img); } else { const icon = doc.createElement('span'); icon.textContent = p.isBot ? '🤖' : '👤'; avatar.appendChild(icon); } }
+
+      if (p.isHost) { const crown = doc.createElement('div'); crown.className = 'crown-icon'; crown.textContent = '👑'; slot.appendChild(crown); }
+      else { const rem = doc.createElement('div'); rem.className = 'remove-icon'; rem.textContent = '✕'; rem.addEventListener('click', (e)=>{ e.stopPropagation(); removePlayer(p.id); }); slot.appendChild(rem); }
+
+      const name = doc.createElement('div'); name.className = 'player-name';
+      // Badge staff/admin à côté du nom
+      if (p.staffRole === 'admin') {
+        const b = doc.createElement('span'); b.className = 'player-staff-badge admin'; b.title = 'Administrateur'; b.textContent = '👑';
+        name.appendChild(b);
+        name.appendChild(doc.createTextNode(' ' + p.name));
+      } else if (p.staffRole === 'staff') {
+        const b = doc.createElement('span'); b.className = 'player-staff-badge staff'; b.title = 'Staff'; b.textContent = '⚔️';
+        name.appendChild(b);
+        name.appendChild(doc.createTextNode(' ' + p.name));
+      } else {
+        name.textContent = p.name;
+      }
+      const lives = doc.createElement('div'); lives.className = 'player-lives';
+      // serverLives a priorité sur p.lives (évite que des renders tardifs de WordbombCore écrasent la vraie valeur)
+      const cnt = serverLives.has(p.name) ? serverLives.get(p.name) : (p.lives || 0);
+      for (let i=0;i<cnt;i++){ const h = doc.createElement('span'); h.className = 'heart'; h.textContent = '❤️'; lives.appendChild(h); }
+      const typing = doc.createElement('div'); typing.className = 'typing-preview'; typing.id = `typing-${p.id}`;
+
+      slot.appendChild(avatar); slot.appendChild(name); slot.appendChild(lives); slot.appendChild(typing);
+
+      // Badge déconnexion avec compte à rebours
+      if (p.disconnected) {
+        const dcBadge = doc.createElement('div');
+        dcBadge.className = 'dc-badge';
+        dcBadge.innerHTML = '📡 <span class="dc-countdown">20</span>s';
+        slot.appendChild(dcBadge);
+        // Lancer le compte à rebours
+        let remaining = 20;
+        const countdownEl = dcBadge.querySelector('.dc-countdown');
+        const interval = setInterval(() => {
+          remaining--;
+          if (countdownEl) countdownEl.textContent = remaining;
+          if (remaining <= 0) clearInterval(interval);
+        }, 1000);
+        slot._dcInterval = interval;
+      }
+
+      return slot;
+    }
+
+    function updatePlayerCount() { const el = $('#playerCount'); if (el) el.textContent = players.length; }
+
+    function addPlayer() {
+      if (players.length >= 6) return;
+      const names = ['Alex','Sophie','Maxime','Thomas','Emma','Lucas','Paul','Clara'];
+      const name = names[Math.floor(Math.random()*names.length)] + (Math.floor(Math.random()*90)+10);
+      const botId = Date.now() + Math.floor(Math.random() * 10000); // ID unique avec random pour éviter collisions
+      players.push({ id: botId, name, isHost: false, isBot: true, lives: leftSettings.baseStartingLives || GAME_INITIAL_LIVES, typing: '', avatar: generateInitialAvatarCanvas(name[0]||'A', 128) });
+      renderPlayers(); updatePlayerCount();
+      requestAnimationFrame(() => arrangePlayersCircle()); // Re-arranger après ajout
+      // Notifier le serveur du nouveau count (pour la liste des salles)
+      _notifyBotCountToServer();
+    }
+
+    function removePlayer(id) {
+      const p = players.find(x => x.id === id); if (!p) return; if (p.isHost) { alert("Impossible de retirer l'hôte"); return; }
+      players = players.filter(x => x.id !== id); renderPlayers(); updatePlayerCount();
+      requestAnimationFrame(() => arrangePlayersCircle()); // Re-arranger après suppression
+      // Notifier le serveur du nouveau count (pour la liste des salles)
+      _notifyBotCountToServer();
+    }
+
+    function _notifyBotCountToServer() {
+      try {
+        const _sock = window._wbSocket;
+        const _roomId = window._wbRoomId
+          || new URLSearchParams(window.location.search).get('roomId')
+          || (window.currentRoom && window.currentRoom.id);
+        if (_sock && _sock.connected && _roomId) {
+          _sock.emit('updateBotCount', { roomId: _roomId, totalCount: players.length });
+        }
+      } catch(e) { console.warn('_notifyBotCountToServer error', e); }
+    }
+
+    function setPlayerTyping(playerId, text, accepted) {
+      const p = players.find(x => x.id === playerId); if (!p) return;
+      const newText = text || '';
+      const el = doc.getElementById(`typing-${playerId}`); if (!el) return;
+
+      // Si le texte est vide, on efface
+      if (!newText) {
+        p.typing = '';
+        el.innerHTML = '';
+        el.classList.remove('typing-visible', 'typing-accepted');
+        return;
+      }
+
+      const raw = newText;
+      const safe = escapeHtml(raw);
+      const wasEmpty = !p.typing;
+      p.typing = newText;
+
+      // Construire le HTML du contenu (avec surlignage syllabe)
+      let html;
+      if (currentSyllable) {
+        const escSyl = escapeRegExp(currentSyllable);
+        const re = new RegExp(escSyl, 'ig');
+        html = safe.replace(re, (match) => `<span class="typing-highlight">${escapeHtml(match)}</span>`);
+      } else {
+        html = safe;
+      }
+
+      // Réutiliser le tile existant si possible (évite le re-render + tremblement)
+      let tile = el.querySelector('.typing-tile');
+      if (!tile) {
+        tile = doc.createElement('div');
+        tile.className = 'typing-tile';
+        el.appendChild(tile);
+      }
+      tile.innerHTML = html;
+
+      // Animation d'apparition uniquement si le container était vide
+      if (wasEmpty) {
+        el.classList.remove('typing-visible');
+        void el.offsetWidth; // force reflow pour re-déclencher l'animation
+        el.classList.add('typing-visible');
+      }
+
+      // Style "accepté" ou normal
+      if (accepted) {
+        el.classList.add('typing-accepted');
+      } else {
+        el.classList.remove('typing-accepted');
+      }
+    }
+
+    function updateTypingUI() { players.forEach(p => setPlayerTyping(p.id, p.typing || '')); }
+
+    function broadcastTypingClear() {
+      const _sock = window._wbSocket;
+      const _roomId = window._wbRoomId;
+      if (_sock && _sock.connected && _roomId) {
+        _sock.emit('typingUpdate', { roomId: _roomId, text: '', playerName: getLocalProfileName() });
+      }
+    }
+
+    function loadLeftSettings() {
+      try { const raw = localStorage.getItem(LEFT_SETTINGS_KEY); if (!raw) return; leftSettings = Object.assign(leftSettings, JSON.parse(raw)); } catch (e) { console.warn('loadLeftSettings', e); }
+      const chk = $('#spaceAsDashSubmit'); if (chk) chk.checked = !!leftSettings.spaceAsDashSubmit;
+      const ns = $('#extraTurnSeconds'); if (ns) ns.value = Number(leftSettings.extraTurnSeconds || 0);
+      const bl = $('#baseLives'); if (bl) bl.value = Number(leftSettings.baseStartingLives || 2);
+    }
+    function saveLeftSettings() { try { localStorage.setItem(LEFT_SETTINGS_KEY, JSON.stringify(leftSettings)); } catch (e) { console.warn('saveLeftSettings', e); } }
+    function applyLeftSettings() {
+      const chk = $('#spaceAsDashSubmit'); const ns = $('#extraTurnSeconds'); const bl = $('#baseLives');
+      leftSettings.spaceAsDashSubmit = !!(chk && chk.checked);
+      let val = Number(ns && ns.value ? ns.value : 0); if (isNaN(val)) val = 0; val = Math.max(0, Math.min(10, Math.floor(val))); leftSettings.extraTurnSeconds = val;
+      let lives = Number(bl && bl.value ? bl.value : 2); if (isNaN(lives)) lives=2; lives = Math.max(1, Math.min(5, Math.floor(lives))); leftSettings.baseStartingLives = lives;
+      saveLeftSettings(); closeLeftSettingsModal();
+      if (!gameRunning) { players.forEach(p => p.lives = leftSettings.baseStartingLives); renderPlayers(); }
+      _syncSettingsToServer(); // propager les vies/timer aux autres joueurs
+    }
+
+    // Envoie les settings courants (scénario, wpp, vies, timer) au serveur
+    // → le serveur les diffuse via settingsUpdated à tous les clients de la salle
+    function _syncSettingsToServer() {
+      try {
+        const _sock = window._wbSocket;
+        const _roomId = window._wbRoomId
+          || new URLSearchParams(window.location.search).get('roomId')
+          || (window.currentRoom && window.currentRoom.id);
+        if (!_sock || !_sock.connected || !_roomId) return;
+        _sock.emit('updateSettings', {
+          roomId: _roomId,
+          settings: {
+            scenario: roomData.scenario || null,
+            wpp: roomData.wpp || null,
+            startingLives: leftSettings.baseStartingLives || 2,
+            extraTurnSeconds: leftSettings.extraTurnSeconds || 0
+          }
+        });
+      } catch(e) { console.warn('_syncSettingsToServer error', e); }
+    }
+
+
+
+    function setBombProgress(remMs) {
+      const circle = $('#bombCircle'); if (!circle) return;
+      const coreState = (window.WordbombCore && WordbombCore.getState) ? WordbombCore.getState() : null;
+      const total = (coreState && coreState.timerMs) ? coreState.timerMs : (8 + Number(leftSettings.extraTurnSeconds || 0)) * 1000;
+      const ratio = Math.max(0, Math.min(1, (total === 0 ? 0 : remMs / total)));
+      const offset = Math.round(bombCircumference * (1 - ratio));
+      circle.style.strokeDasharray = bombCircumference;
+      circle.style.strokeDashoffset = offset;
+      const tEl = $('#topTimer'); if (tEl) tEl.textContent = `${String(Math.floor(remMs/60000)).padStart(2,'0')}:${String(Math.floor((remMs/1000)%60)).padStart(2,'0')}`;
+    }
+    function showBomb(show){ const el = $('#bombWrapper'); if (el) el.classList.toggle('visible', !!show); }
+    function showSyllable(show){ const el = $('#syllableBox'); if (el) el.classList.toggle('visible', !!show); }
+    function showSubmit(show){ const el = $('#submitArea'); if (el) el.classList.toggle('visible', !!show); updateSubmitForTurn(); }
+    function resetBomb(){ const circle = $('#bombCircle'); if (circle) { circle.style.strokeDashoffset = bombCircumference; circle.style.strokeDasharray = bombCircumference; } }
+    function pulseBombVisual(){ const b = $('#bombElem'); if (!b) return; b.classList.add('pulse'); setTimeout(()=>b.classList.remove('pulse'),450); }
+    function explodeBombVisual(){ const b = $('#bombElem'); if (!b) return; b.classList.add('explode'); setTimeout(()=>b.classList.remove('explode'),600); }
+
+    let _errTimer = null;
+    function showSyllableError(msg) {
+      const el = $('#syllableError'); if (!el) return;
+      el.textContent = msg; el.classList.add('visible');
+      if (_errTimer) clearTimeout(_errTimer);
+      _errTimer = setTimeout(()=>{ el.classList.remove('visible'); el.textContent=''; }, 1400);
+    }
+
+    async function submitWordFromInput() {
+      const input = $('#wordInput'); if (!input) return;
+      let word = input.value.trim(); if (!word) return;
+      input.disabled = true; const submitBtn = $('#wordSubmitBtn'); if (submitBtn) submitBtn.disabled = true;
+      try {
+        // ── MODE MULTIJOUEUR : envoyer via socket au serveur ────────────────
+        if (typeof window._submitWordMultiplayer === 'function' && window._wbRoomId) {
+          const syllable = window._wbCurrentSyllable || (window.WordbombCore && WordbombCore.getState ? WordbombCore.getState().currentSyllable : '') || '';
+          // Garder le mot affiché en vert jusqu'à la prochaine syllabe
+          const _lid = window._localPlayerId || localPlayerId;
+          if (_lid) setPlayerTyping(_lid, word, true); // 'accepted' = vert
+          // Broadcaster le mot "accepted" aux autres aussi
+          const _sock2 = window._wbSocket; const _rid2 = window._wbRoomId;
+          if (_sock2 && _sock2.connected && _rid2) {
+            _sock2.emit('typingUpdate', { roomId: _rid2, text: word, playerName: getLocalProfileName(), accepted: true });
+          }
+          input.value = '';
+          window._submitWordMultiplayer(word, syllable);
+          // La réponse arrive via socket wordAccepted / wordRejected
+          return;
+        }
+        // ── MODE SOLO : valider via WordbombCore local ───────────────────────
+        if (window.WordbombCore && typeof WordbombCore.submitWord === 'function') {
+          const ok = await WordbombCore.submitWord(word);
+          if (ok) {
+            pulseBombVisual();
+            const currentPlayer = players[turnIndex];
+            if (currentPlayer && currentPlayer.name) incrementWordsFound(currentPlayer.name);
+          } else {
+            showSyllableError('Mot invalide');
+            input.disabled = false;
+            if (submitBtn) submitBtn.disabled = false;
+            input.value = '';
+            if (localPlayerId || window._localPlayerId) setPlayerTyping(window._localPlayerId || localPlayerId, '');
+            input.focus();
+          }
+        } else {
+          showSyllableError('Moteur de jeu indisponible');
+          input.disabled = false;
+          if (submitBtn) submitBtn.disabled = false;
+        }
+      } catch (e) {
+        console.error('submitWord error:', e);
+        showSyllableError('Erreur soumission');
+        input.disabled = false;
+        if (submitBtn) submitBtn.disabled = false;
+      } finally {
+        // En mode multijoueur, le serveur gère la réactivation via wordAccepted/wordRejected.
+        // On ne réactive pas l'input ici pour éviter les conflits de timing.
+        if (!window._wbRoomId) {
+          input.value = '';
+          setTimeout(() => {
+            if (localPlayerId || window._localPlayerId) setPlayerTyping(window._localPlayerId || localPlayerId, '');
+            broadcastTypingClear();
+            input.disabled = false;
+            if (submitBtn) submitBtn.disabled = false;
+            updateSubmitForTurn();
+          }, 100);
+        }
+      }
+    }
+
+    async function suicide() {
+      if (!gameRunning) return;
+      // En mode multijoueur, forcer l'expiration du timer côté serveur
+      if (window._wbRoomId && window._wbSocket && window._wbSocket.connected) {
+        try { window._wbSocket.emit('suicideRequest', { roomId: window._wbRoomId }); } catch(e) { console.warn('suicide emit error', e); }
+        return;
+      }
+      // Mode solo : takeLife via WordbombCore
+      if (window.WordbombCore && typeof WordbombCore.takeLife === 'function') {
+        try { 
+          WordbombCore.takeLife(); 
+        } catch(e){ 
+          console.warn('takeLife error', e); 
+        }
+      } else {
+        // Fallback si WordbombCore n'est pas disponible
+        if (!players || players.length===0) return;
+        const idx = turnIndex % players.length;
+        if (players[idx]) {
+          players[idx].lives = Math.max(0, (players[idx].lives||0) - 1);
+          sendSystemChat(`💥 ${players[idx].name} a perdu une vie! (${players[idx].lives} ❤️ restantes)`);
+          if (players[idx].lives <= 0) { 
+            sendSystemChat(`☠️ ${players[idx].name} est éliminé!`);
+            players.splice(idx,1); 
+            if (turnIndex >= players.length) turnIndex = 0; 
+          } else { 
+            turnIndex = (turnIndex + 1) % players.length; 
+          }
+          renderPlayers();
+          if (players.length === 0) endGame('Partie terminée');
+        }
+        updateSubmitForTurn();
+      }
+    }
+
+    function endGame(winnerName) {
+      gameRunning = false;
+      showBomb(false);
+      resetBomb();
+      showSyllable(false);
+      showSubmit(true);
+      const cur = $('#currentSyllable');
+      if (cur) cur.textContent='--';
+
+      roundNum = 0;
+      const topRoundEl = document.getElementById('topRoundCount');
+      if (topRoundEl) topRoundEl.textContent = '—';
+      const topTimerEl = document.getElementById('topTimer');
+      if (topTimerEl) topTimerEl.textContent = '00:00';
+
+      if (initialPlayers && initialPlayers.length > 0) {
+        players = JSON.parse(JSON.stringify(initialPlayers));
+        players.forEach(p => p.lives = leftSettings.baseStartingLives || GAME_INITIAL_LIVES);
+      } else {
+        players.forEach(p => p.lives = leftSettings.baseStartingLives || GAME_INITIAL_LIVES);
+      }
+
+      const playersArea = $('#playersArea');
+      if (playersArea) playersArea.style.display = '';
+
+      renderPlayers();
+
+      setTimeout(() => {
+        arrangePlayersCircle();
+        positionSyllableAboveBomb();
+      }, 50);
+
+      const btn = $('#startBtn');
+      if (btn) {
+        btn.textContent = '▶️';
+        btn.disabled = false;
+      }
+
+      turnIndex = 0;
+      updateSubmitForTurn();
+
+      // Déterminer le gagnant réel
+      let actualWinner = winnerName;
+      let showPopup = false;
+      
+      // Si pas de nom de gagnant explicite, trouver le dernier joueur en vie
+      if (!winnerName || winnerName === 'Partie terminée' || winnerName === 'Partie arrêtée') {
+        if (initialPlayers && initialPlayers.length > 0) {
+          // Chercher le joueur avec le plus de vies dans les stats
+          const playersWithStats = initialPlayers.map(p => ({
+            name: p.name,
+            words: getWordsFoundByPlayer(p.name),
+            wasAlive: p.lives > 0
+          }));
+          
+          // Prendre le joueur avec le plus de mots trouvés
+          playersWithStats.sort((a, b) => b.words - a.words);
+          if (playersWithStats.length > 0 && playersWithStats[0].words > 0) {
+            actualWinner = playersWithStats[0].name;
+            showPopup = true;
+          }
+        }
+      } else {
+        // Nom de gagnant explicite fourni
+        showPopup = true;
+      }
+
+      // Afficher le popup si on a un gagnant ou des stats à montrer
+      if (showPopup && actualWinner && actualWinner !== 'Partie terminée' && actualWinner !== 'Partie arrêtée') {
+        sendSystemChat(`${actualWinner} a gagné!`);
+        
+        // Afficher le popup de victoire
+        const stats = {
+          wordsFound: getWordsFoundByPlayer(actualWinner),
+          duration: formatGameDuration(window.gameStartTime)
+        };
+        
+        // S'assurer que le popup s'affiche même si pas de stats
+        if (stats.wordsFound === 0 && (!stats.duration || stats.duration === '0:00')) {
+          stats.wordsFound = 0;
+          stats.duration = '0:00';
+        }
+        
+        showVictoryPopup(actualWinner, stats);
+      } else if (winnerName) {
+        sendSystemChat(winnerName === 'Partie arrêtée' ? 'Partie arrêtée.' : 'Partie terminée.');
+      }
+
+      if (window.WordbombCore && typeof WordbombCore.stopGame === 'function') {
+        try { WordbombCore.stopGame(); } catch(e){}
+      }
+    }
+
+    function removeCurrentRoomFromRoomsList() {
+      try {
+        const currentRaw = localStorage.getItem('currentRoom');
+        if (!currentRaw) return false;
+        const current = JSON.parse(currentRaw);
+        const ROOMS_KEY = 'wb_rooms_v1';
+        const raw = localStorage.getItem(ROOMS_KEY);
+        if (!raw) {
+          localStorage.removeItem('currentRoom');
+          return true;
+        }
+        let rooms = [];
+        try { rooms = JSON.parse(raw) || []; } catch (e) { rooms = []; }
+        const filtered = rooms.filter(r => {
+          if (!r) return false;
+          if (typeof r.id !== 'undefined' && typeof current.id !== 'undefined') return r.id !== current.id;
+          if (r.host && current.host && r.createdAt && current.createdAt) {
+            return !(r.host === current.host && r.createdAt === current.createdAt);
+          }
+          if (r.name && current.name) return r.name !== current.name;
+          return true;
+        });
+        localStorage.setItem(ROOMS_KEY, JSON.stringify(filtered));
+        localStorage.removeItem('currentRoom');
+        return true;
+      } catch (e) {
+        console.warn('removeCurrentRoomFromRoomsList error', e);
+        return false;
+      }
+    }
+
+    function bindCoreCallbacks() {
+      try {
+        const apiBase = localStorage.getItem('WB_API_BASE') || window.location.origin || '';
+        if (window.WordbombCore && typeof WordbombCore.init === 'function') {
+          WordbombCore.init({
+            apiBaseUrl: apiBase,
+            timerMs: (8 + Number(leftSettings.extraTurnSeconds || 0)) * 1000,
+            initialLives: leftSettings.baseStartingLives || GAME_INITIAL_LIVES,
+            onInfo: () => {}, // logs WordbombCore supprimés
+            onSyllable: async (info) => {
+              try {
+                roundNum = (typeof roundNum === 'number') ? (roundNum + 1) : 1;
+                const topRoundEl = document.getElementById('topRoundCount');
+                if (topRoundEl) topRoundEl.textContent = String(roundNum);
+
+                let syl = '', count = null;
+                if (info && typeof info === 'object') { syl = info.syl || ''; count = info.count; } else syl = String(info || '');
+                syl = String(syl || '').toUpperCase();
+                currentSyllable = syl || '';
+                const sylEl = $('#currentSyllable'); if (sylEl) sylEl.textContent = syl || '--';
+                const countEl = $('#syllableCount'); if (countEl) {
+                  if (typeof count === 'number' && count >= 0) { countEl.style.display = 'inline-block'; countEl.textContent = count; coreHasSyllableStats = true; } else { countEl.style.display = 'none'; }
+                }
+                showSyllable(true); showBomb(true); showSubmit(true);
+                $all('.typing-preview').forEach(tp => tp.innerHTML = '');
+                renderPlayers();
+                updateSubmitForTurn();
+
+                const active = players.length > 0 ? players[turnIndex % players.length] : null;
+
+                // ── MULTIJOUEUR : l'hôte diffuse la syllabe au serveur ──────────────────
+                // Mettre à jour le turnIndex réactif avant d'émettre
+                window._wb_turnIndex_current = turnIndex;
+                if (typeof window._wb_onSyllable_multiplayer === 'function' && window._wbIsHost) {
+                  try {
+                    const _timerMs = (8 + Number((window._wb_debug && window._wb_debug.leftSettings && window._wb_debug.leftSettings.extraTurnSeconds) || 0)) * 1000;
+                    window._wb_onSyllable_multiplayer(info, _timerMs);
+                  } catch (e) { console.warn('[Multiplayer] _wb_onSyllable_multiplayer error', e); }
+                }
+                // ─────────────────────────────────────────────────────────────────────────
+
+                if (active && active.isBot) {
+                  const botDelay = 800 + Math.random() * 1500;
+                  setTimeout(async () => {
+                    // Vérifier que le bot est toujours le joueur actif
+                    const currentActive = players.length > 0 ? players[turnIndex % players.length] : null;
+                    if (!currentActive || currentActive.id !== active.id) return;
+
+                    let botWord = null;
+
+                    if (window.WordbombCore && typeof WordbombCore.getBotWord === 'function') {
+                      try {
+                        const res = await WordbombCore.getBotWord(syl, active.name);
+                        if (res && res.word) botWord = res.word;
+                        else console.warn(`[Bot] ${active.name} n'a pas reçu de mot valide`);
+                      } catch(e) { console.error(`[Bot] Erreur getBotWord pour ${active.name}:`, e); }
+                    }
+
+                    // Fallback lexical si getBotWord échoue
+                    if (!botWord) {
+                      const sample = ['TABLE','TIRE','BALLE','PIERRE','CARTE','ROUTE','COURIR','MANGER','STYLO','VOYAGE','ARBRE','FLEUR','TEMPS','MONDE','VILLE','GRAND','PETIT','NOIR','BLANC','ROUGE'];
+                      const matching = sample.filter(w => syl && w.toUpperCase().includes(syl.toUpperCase()));
+                      botWord = matching.length > 0
+                        ? matching[Math.floor(Math.random() * matching.length)]
+                        : sample[Math.floor(Math.random() * sample.length)];
+                    }
+
+                    // ── MULTIJOUEUR : passer par le socket (source de vérité serveur) ──
+                    const _sock = window._wbSocket;
+                    const _roomId = window._wbRoomId;
+                    if (_sock && _sock.connected && _roomId) {
+                      _sock.emit('submitWord', { roomId: _roomId, word: botWord, syllable: syl });
+                    } else {
+                      // Solo : soumettre directement via WordbombCore
+                      if (window.WordbombCore && typeof WordbombCore.submitWord === 'function') {
+                        try { await WordbombCore.submitWord(botWord); }
+                        catch(e) { console.error(`[Bot] Erreur submitWord solo pour ${active.name}:`, e); }
+                      }
+                    }
+                  }, botDelay);
+                }
+              } catch (err) { console.error('onSyllable handler error', err); }
+            },
+            onTimerTick: (remainingMs) => { try { setBombProgress(remainingMs); } catch (e) {} },
+            onLivesUpdate: (lives) => {
+              try {
+                if (window._wbRoomId) return; // serveur gère en multi
+                if (!players || players.length === 0) return;
+                const idx = turnIndex % players.length;
+                if (players[idx]) { players[idx].lives = lives; renderPlayers(); }
+              } catch(e) { console.warn('onLivesUpdate', e); }
+            },
+            onRoundWin: (word, syl) => {
+              try {
+                const key = String(syl||'').toUpperCase();
+                if (autoSubmitMeta.attempts) { autoSubmitMeta.attempts[key] = 0; autoSubmitMeta.scheduled[key] = false; }
+                // En multijoueur, le serveur envoie syllableUpdate avec le bon playerIndex → ne pas avancer ici
+                if (window._wbRoomId) { pulseBombVisual(); return; }
+                turnIndex = (turnIndex + 1) % Math.max(1, players.length);
+                renderPlayers();
+                pulseBombVisual();
+                currentSyllable = '';
+                const cur = $('#currentSyllable'); if (cur) cur.textContent = '--';
+                updateSubmitForTurn();
+              } catch (e) { console.warn('onRoundWin handler', e); }
+            },
+            onRoundLose: (syl) => {
+              try {
+                const s = String(syl||'').trim().toUpperCase();
+                if (s) {
+                  try {
+                    const raw = localStorage.getItem(DEATHS_KEY);
+                    const list = raw ? JSON.parse(raw) : [];
+                    if (!list.includes(s)) { list.push(s); localStorage.setItem(DEATHS_KEY, JSON.stringify(list)); }
+                  } catch(e){}
+                }
+
+                // En mode multijoueur, le serveur gère les vies et l'avancement du tour.
+                if (window._wbRoomId) {
+                  explodeBombVisual();
+                  return;
+                }
+
+                // ── Mode solo / local ───────────────────────────────────────────
+                if (!players || players.length===0) return;
+                const idx = turnIndex % players.length;
+                const loser = players[idx];
+                if (loser) {
+                  const oldLives = loser.lives || 0;
+                  loser.lives = Math.max(0, oldLives - 1);
+                  sendSystemChat(`💥 ${loser.name} a perdu une vie! (${loser.lives} ❤️ restantes)`);
+                  if (loser.lives <= 0) {
+                    sendSystemChat(`☠️ ${loser.name} est éliminé!`);
+                    players.splice(idx, 1);
+                    if (turnIndex >= players.length) turnIndex = 0;
+                  } else {
+                    turnIndex = (turnIndex + 1) % Math.max(1, players.length);
+                  }
+                }
+                renderPlayers();
+                explodeBombVisual();
+                updateSubmitForTurn();
+                const realPlayersLeft = players.filter(p => !p.isBot).length;
+                if (players.length === 0 || realPlayersLeft === 0) {
+                  const winner = players.find(p => p.isBot);
+                  if (winner && realPlayersLeft === 0) {
+                    sendSystemChat(`🏆 ${winner.name} (Bot) a gagné la partie!`);
+                  }
+                  try { removeCurrentRoomFromRoomsList(); } catch(e){}
+                  endGame('Partie terminée');
+                }
+              } catch (e) { console.warn('onRoundLose', e); }
+            },
+            onGameOver: () => {
+              try { try { removeCurrentRoomFromRoomsList(); } catch (e) {} endGame('Partie terminée'); } catch (e) { console.warn('onGameOver', e); }
+            }
+          });
+        }
+      } catch (err) { console.error('bindCoreCallbacks error', err); }
+    }
+
+    function arrangePlayersCircle() {
+      const slots = $all('.player-slot');
+      if (!slots || slots.length === 0) return;
+      const playersContainer = $('#playersArea');
+      if (!playersContainer) return;
+      const containerRect = playersContainer.getBoundingClientRect();
+      const containerWidth = containerRect.width;
+      const containerHeight = containerRect.height;
+      
+      // Positions adaptées au nombre de joueurs - priorité au milieu pour 1-2 joueurs
+      let positions;
+      const n = slots.length;
+      
+      if (n === 1) {
+        // 1 joueur : placer à la position gauche utilisée pour 2 joueurs
+        positions = [[35, 50]];
+      } else if (n === 2) {
+        // 2 joueurs : côte à côte au milieu
+        positions = [[35, 50], [65, 50]];
+      } else if (n === 3) {
+        // 3 joueurs : triangle avec un au milieu-haut
+        positions = [[50, 30], [30, 65], [70, 65]];
+      } else if (n === 4) {
+        // 4 joueurs : carré
+        positions = [[30, 35], [70, 35], [30, 65], [70, 65]];
+      } else if (n === 5) {
+        // 5 joueurs : disposition symétrique
+        positions = [[50, 25], [25, 50], [75, 50], [30, 75], [70, 75]];
+      } else {
+        // 6 joueurs : grille 2x3
+        positions = [[25, 25], [75, 25], [25, 50], [75, 50], [25, 75], [75, 75]];
+      }
+      
+      for (let i = 0; i < n && i < positions.length; i++) {
+        const [xPercent, yPercent] = positions[i];
+        const x = Math.round((containerWidth * xPercent / 100) - slots[i].offsetWidth / 2);
+        const y = Math.round((containerHeight * yPercent / 100) - slots[i].offsetHeight / 2);
+        slots[i].style.left = `${x}px`;
+        slots[i].style.top = `${y}px`;
+      }
+    }
+    function positionSyllableAboveBomb() { return; }
+
+    function updateSubmitForTurn() {
+      const submitBox = $('#submitArea'); const input = $('#wordInput'); const sendBtn = $('#wordSubmitBtn'); const suicideBtn = $('#suicideBtn');
+      if (!submitBox || !input || !sendBtn || !suicideBtn) return;
+      if (!gameRunning) { input.disabled = false; sendBtn.disabled = false; suicideBtn.disabled = false; input.placeholder = 'Entrez votre mot...'; return; }
+      const localName = getLocalProfileName();
+      const active = players.length > 0 ? players[turnIndex % players.length] : null;
+      const isLocalTurn = active && !active.isBot && active.name === localName;
+
+      // Si c'est le tour d'un bot, toujours bloquer l'input
+      if (active && active.isBot) {
+        input.disabled = true; sendBtn.disabled = true; suicideBtn.disabled = true;
+        input.placeholder = (active && active.name) ? `Attente du tour de ${active.name} (bot)...` : 'Attente (bot)...';
+        return;
+      }
+
+      const coreControlled = Boolean(window.WordbombCore && typeof WordbombCore.getState === 'function');
+
+      if (isLocalTurn || !coreControlled) { input.disabled = false; sendBtn.disabled = false; suicideBtn.disabled = false; input.focus(); input.placeholder = 'Entrez votre mot...'; }
+      else { input.disabled = true; sendBtn.disabled = true; suicideBtn.disabled = true; input.placeholder = (active && active.name) ? `Attente du tour de ${active.name}...` : 'Attente du prochain tour...'; }
+    }
+
+    async function startGameUI() {
+      const btn = $('#startBtn'); if (!btn) return;
+      if (!gameRunning) {
+        roundNum = 0;
+        const topRoundEl = document.getElementById('topRoundCount');
+        if (topRoundEl) topRoundEl.textContent = '0';
+
+        btn.disabled = true; btn.textContent = 'Chargement...';
+        showSyllable(true); showSubmit(true); showBomb(true);
+        turnIndex = 0; roundNum = 0; seenSyllables.clear();
+        initialPlayers = JSON.parse(JSON.stringify(players));
+        let trainAllowedSet = null;
+        if (roomData && String(roomData.scenario||'').toLowerCase().trim() === 'train skip') {
+          const deaths = loadDeaths(); if (deaths && deaths.length) trainAllowedSet = new Set(deaths.map(x=>String(x||'').toUpperCase()));
+          if (trainAllowedSet && trainAllowedSet.size) sendSystemChat(`Train-skip activé (${trainAllowedSet.size} syllabes)`); else sendSystemChat('Train-skip activé mais aucune syllabe ratée trouvée — ignoré.');
+        }
+        if (!window.WordbombCore || typeof WordbombCore.startGame !== 'function') { sendSystemChat('Erreur: moteur de jeu introuvable.'); btn.textContent='▶️'; btn.disabled=false; return; }
+        try {
+          const extraSec = Number(leftSettings.extraTurnSeconds || 0); const timerMs = (8 + Math.max(0, extraSec)) * 1000;
+          const startingLives = Number(leftSettings.baseStartingLives || GAME_INITIAL_LIVES);
+          serverLives.clear(); players.forEach(p => p.lives = startingLives); renderPlayers();
+          if (roomData && roomData.wpp) { if (WordbombCore && typeof WordbombCore.setScenario === 'function') WordbombCore.setScenario('sub'+roomData.wpp); }
+          else if (roomData && roomData.scenario) { if (WordbombCore && typeof WordbombCore.setScenario === 'function') WordbombCore.setScenario(roomData.scenario); }
+
+          // ── MULTIJOUEUR : signaler au serveur que la partie démarre ─────────
+          const _sock = window._wbSocket;
+          // Priorité : URL > _wbRoomId > localStorage
+          const _roomId = window._wbRoomId
+            || new URLSearchParams(window.location.search).get('roomId')
+            || (window.currentRoom && window.currentRoom.id);
+          if (_sock && _sock.connected && _roomId) {
+            _sock.emit('startGame', { roomId: _roomId, scenario: (roomData && roomData.scenario) || null });
+            console.info('%c[WB] startGame émis → ' + _roomId, 'color:#f97316;font-size:11px;');
+          } else {
+            console.warn('[WB] startGame non émis — socket:', !!_sock, 'connected:', _sock && _sock.connected, 'roomId:', _roomId);
+          }
+          // ────────────────────────────────────────────────────────────────────
+
+          await WordbombCore.startGame({ lives: startingLives, timerMs: timerMs });
+          gameRunning = true;
+          
+          // Initialiser le timer et réinitialiser les stats de partie
+          window.gameStartTime = Date.now();
+          resetGameStats();
+          
+          btn.textContent = '⏹️';
+          btn.disabled = false;
+          updateSubmitForTurn();
+          if (trainAllowedSet && WordbombCore && typeof WordbombCore.setTrainAllowed === 'function') {
+            try { WordbombCore.setTrainAllowed(Array.from(trainAllowedSet)); } catch(e){ console.warn('setTrainAllowed failed', e); }
+          }
+        } catch (err) {
+          console.error('startGame error:', err);
+          gameRunning = false; btn.textContent = '▶️'; btn.disabled = false;
+          sendSystemChat('Erreur démarrage (voir console).');
+        }
+      } else {
+        if (WordbombCore && typeof WordbombCore.setTrainAllowed === 'function') { try { WordbombCore.setTrainAllowed(null); } catch(e){} }
+        if (WordbombCore && typeof WordbombCore.stopGame === 'function') WordbombCore.stopGame();
+
+        // ── MULTIJOUEUR : signaler au serveur d'arrêter la partie pour TOUS ──
+        const _sock = window._wbSocket;
+        const _roomId = window._wbRoomId
+          || new URLSearchParams(window.location.search).get('roomId')
+          || (window.currentRoom && window.currentRoom.id);
+        if (_sock && _sock.connected && _roomId) {
+          _sock.emit('endGame', _roomId);
+          // Le serveur va émettre 'gameOver' à tous → endGame sera appelé via l'event
+          // On ne l'appelle donc pas localement pour éviter le double déclenchement
+        } else {
+          // Pas de socket → arrêt local seulement
+          endGame('Partie arrêtée');
+        }
+      }
+    }
+
+    async function detectApiBase() {
+      const candidates = [];
+      const override = userApiBaseOverride || localStorage.getItem('WB_API_BASE') || '';
+      if (override) candidates.push(override);
+      try { candidates.push(window.location.origin); } catch(e){}
+      candidates.push('http://localhost:3000');
+      candidates.push('http://127.0.0.1:3000');
+
+      for (const c of candidates) {
+        if (!c) continue;
+        try {
+          const readyUrl = c.replace(/\/$/, '') + '/ready';
+          const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+          const opt = controller ? { signal: controller.signal } : {};
+          if (controller) setTimeout(()=>controller.abort(), 1500);
+          const res = await fetch(readyUrl, opt);
+          if (!res.ok) throw new Error('not ready');
+          const json = await res.json();
+          if (json && typeof json.ready !== 'undefined') {
+            const base = c.replace(/\/$/, '');
+            try { localStorage.setItem('WB_API_BASE', base); } catch(e){}
+            if (window.WordbombCore && typeof WordbombCore.setApiBase === 'function') try { WordbombCore.setApiBase(base); } catch(e){}
+            return base;
+          }
+        } catch (err) { /* ignore */ }
+      }
+      
+      return null;
+    }
+
+    function loadDeaths() {
+      try {
+        const raw = localStorage.getItem(DEATHS_KEY); if (!raw) return [];
+        const arr = JSON.parse(raw) || []; const m = new Map();
+        for (const v of arr) { const n = String(v||'').trim().toUpperCase(); if (!n) continue; if (!m.has(n)) m.set(n,n); }
+        return Array.from(m.keys());
+      } catch (e) { return []; }
+    }
+
+    wb.toggleSystemMessages = function() {
+      showSystemMessages = !showSystemMessages;
+      
+      // Persister via WBSettings si disponible
+      if (window.WBSettings && typeof window.WBSettings.setShowSystemMessages === 'function') {
+        window.WBSettings.setShowSystemMessages(showSystemMessages);
+      }
+      
+      // Mettre à jour l'affichage
+      const nodes = $all('.chat-message.chat-system');
+      nodes.forEach(n => n.style.display = showSystemMessages ? '' : 'none');
+      const btn = $('#sysToggleLeft'); 
+      if (btn) { 
+        btn.textContent = showSystemMessages ? 'S' : 'S✕';
+        btn.setAttribute('aria-pressed', String(showSystemMessages));
+      }
+      const rightBtn = $('#toggleSystemBtn');
+      if (rightBtn) {
+        rightBtn.textContent = showSystemMessages ? 'S' : 'S✕';
+        rightBtn.setAttribute('aria-pressed', String(showSystemMessages));
+      }
+    };
+
+    function openSettingsModal(){ $('#settingsOverlay').classList.add('active'); }
+    function closeSettingsModal(){ $('#settingsOverlay').classList.remove('active'); }
+    function handleSettingsOverlayClick(e){ if (e.target && e.target.id === 'settingsOverlay') closeSettingsModal(); }
+    function openScenarioModal(){ $('#scenarioOverlay').classList.add('active'); }
+    function closeScenarioModal(){ $('#scenarioOverlay').classList.remove('active'); }
+    function handleScenarioOverlayClick(e){ if (e.target && e.target.id === 'scenarioOverlay') closeScenarioModal(); }
+    function openTrainSkipCategoryModal(){ $('#trainSkipCategoryOverlay').classList.add('active'); }
+    function closeTrainSkipCategoryModal(){ $('#trainSkipCategoryOverlay').classList.remove('active'); }
+    function handleTrainSkipCategoryOverlayClick(e){ if (e.target && e.target.id === 'trainSkipCategoryOverlay') closeTrainSkipCategoryModal(); }
+
+    function openLeftSettingsModal(){ $('#leftSettingsOverlay').classList.add('active'); }
+    function closeLeftSettingsModal(){ $('#leftSettingsOverlay').classList.remove('active'); }
+    function handleLeftSettingsOverlayClick(e){ if (e.target && e.target.id === 'leftSettingsOverlay') closeLeftSettingsModal(); }
+
+    function selectModeTile(ev, mode) {
+      $all('.mode-tile').forEach(t => t.classList.remove('active'));
+      const el = ev.currentTarget || ev.target; if (el) el.classList.add('active');
+      roomData.mode = mode; try { localStorage.setItem(ROOM_KEY, JSON.stringify(roomData)); } catch(e){}
+    }
+
+    function selectScenario(scenario, el) {
+      // Si c'est Train Skip, on ouvre la modal de choix de catégorie au lieu de fermer directement
+      if (scenario && (scenario.toLowerCase() === 'train skip' || scenario.toLowerCase() === 'train-skip')) {
+        closeScenarioModal();
+        openTrainSkipCategoryModal();
+        return;
+      }
+      
+      $all('.scenario-item').forEach(t => t.classList.remove('selected'));
+      if (el) el.classList.add('selected');
+      roomData.scenario = (scenario === 'none') ? null : scenario;
+      roomData.wpp = null; // scénario annule le WPP
+      $('#scenarioPill').textContent = (scenario === 'none') ? 'Aucun scénario' : scenario;
+      try { localStorage.setItem(ROOM_KEY, JSON.stringify(roomData)); } catch(e){}
+      _syncSettingsToServer();
+      closeScenarioModal();
+    }
+
+    function selectTrainSkipCategory(category) {
+      // Charger les syllabes ratées depuis localStorage
+      const deaths = loadDeaths();
+      if (!deaths || deaths.length === 0) {
+        alert('Aucune syllabe ratée trouvée. Jouez d\'abord quelques parties pour enregistrer vos erreurs !');
+        closeTrainSkipCategoryModal();
+        return;
+      }
+
+      // Filtrer par catégorie (nécessite les stats des syllabes)
+      let filteredSyllabes = [];
+      
+      // Pour l'instant, on utilise toutes les syllabes ratées et on laisse le jeu les filtrer
+      // Une implémentation plus avancée pourrait charger les stats depuis l'API
+      filteredSyllabes = deaths;
+
+      if (filteredSyllabes.length === 0) {
+        alert(`Aucune syllabe ratée dans la catégorie "${category}".`);
+        closeTrainSkipCategoryModal();
+        return;
+      }
+
+      // Configurer le scénario avec la catégorie sélectionnée
+      roomData.scenario = 'train skip';
+      roomData.trainSkipCategory = category;
+      roomData.wpp = null;
+      
+      // Stocker les syllabes filtrées pour que le jeu les utilise
+      try {
+        localStorage.setItem('wb_train_skip_syllabes', JSON.stringify(filteredSyllabes));
+        localStorage.setItem(ROOM_KEY, JSON.stringify(roomData));
+      } catch(e) {}
+
+      // Mettre à jour l'affichage
+      $('#scenarioPill').textContent = `Train skip (${category})`;
+      _syncSettingsToServer();
+      closeTrainSkipCategoryModal();
+    }
+
+    function applyWPP() {
+      const input = $('#wppNumber'); if (!input) return;
+      const val = Number(input.value || 0);
+      if (val > 0) {
+        roomData.wpp = val;
+        roomData.scenario = null; // WPP annule le scénario
+        try { localStorage.setItem(ROOM_KEY, JSON.stringify(roomData)); } catch(e){}
+        _syncSettingsToServer();
+      }
+    }
+    function clearWPP() {
+      roomData.wpp = null;
+      const input = $('#wppNumber'); if (input) input.value = '';
+      try { localStorage.setItem(ROOM_KEY, JSON.stringify(roomData)); } catch(e){}
+      _syncSettingsToServer();
+    }
+
+    function togglePractice(){ const pm = $('#practiceMode'); if (!pm) return; roomData.practiceMode = pm.checked; try { localStorage.setItem(ROOM_KEY, JSON.stringify(roomData)); } catch(e){} }
+
+    function leaveRoom() {
+      if (confirm('Quitter la salle?')) {
+        try {
+          try { removeCurrentRoomFromRoomsList(); } catch(e) { /* ignore */ }
+          localStorage.removeItem('currentRoom');
+        } catch(e){}
+        window.location.href = 'index.html';
+      }
+    }
+
+    window.addEventListener('resize', () => { arrangePlayersCircle(); positionSyllableAboveBomb(); });
+
+    doc.addEventListener('DOMContentLoaded', async () => {
+
+
+      // Charger l'état de showSystemMessages depuis WBSettings
+      try {
+        if (window.WBSettings && typeof window.WBSettings.get === 'function') {
+          const settings = window.WBSettings.get();
+          if (typeof settings.showSystemMessages !== 'undefined') {
+            showSystemMessages = settings.showSystemMessages;
+          }
+        }
+      } catch(e) { console.warn('Failed to load showSystemMessages from WBSettings', e); }
+
+      loadLeftSettings();
+      loadRoomData();
+      setupChatHandlers();
+
+      const hostName = getLocalProfileName();
+      const hostAvatar = getLocalProfileAvatar();
+      const hostId = Date.now();
+      players.push({ id: hostId, name: hostName, isHost: true, isBot: false, lives: leftSettings.baseStartingLives || GAME_INITIAL_LIVES, typing: '', avatar: hostAvatar });
+      localPlayerId = hostId;
+      renderPlayers();
+      updatePlayerCount();
+
+      bindCoreCallbacks();
+
+      const detected = await detectApiBase();
+      if (detected && window.WordbombCore && typeof WordbombCore.setApiBase === 'function') WordbombCore.setApiBase(detected);
+
+      const wordInput = $('#wordInput');
+      if (wordInput) {
+        wordInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); submitWordFromInput(); }
+        });
+        wordInput.addEventListener('input', (e) => {
+          const val = (e.target && e.target.value) ? e.target.value : '';
+          // Toujours utiliser l'ID le plus à jour (syncPlayersFromServer peut l'avoir changé)
+          const effectiveLocalId = window._localPlayerId || localPlayerId;
+          if (effectiveLocalId) setPlayerTyping(effectiveLocalId, val);
+          // Broadcaster en temps réel aux autres joueurs
+          const _sock = window._wbSocket;
+          const _roomId = window._wbRoomId;
+          if (_sock && _sock.connected && _roomId && gameRunning) {
+            _sock.emit('typingUpdate', {
+              roomId: _roomId,
+              text: val,
+              playerName: getLocalProfileName()
+            });
+          }
+        });
+      }
+      const wordSubmitBtn = $('#wordSubmitBtn');
+      if (wordSubmitBtn) wordSubmitBtn.addEventListener('click', submitWordFromInput);
+      const suicideBtn = $('#suicideBtn');
+      if (suicideBtn) suicideBtn.addEventListener('click', suicide);
+
+      const circle = $('#bombCircle');
+      if (circle) { circle.style.strokeDasharray = bombCircumference; circle.style.strokeDashoffset = bombCircumference; circle.style.strokeLinecap = 'round'; }
+
+      setTimeout(()=>{ const wi = $('#wordInput'); if (wi) wi.focus(); }, 50);
+
+      try {
+        const leftBackBtn = document.getElementById('leftBackBtn'); if (leftBackBtn) leftBackBtn.addEventListener('click', () => { try { wb.leaveRoom(); } catch(e){} });
+        const startBtn = document.getElementById('startBtn'); if (startBtn) startBtn.addEventListener('click', () => { try { wb.startGameUI(); } catch(e){} });
+        const leftSettingsBtn = document.getElementById('leftSettingsBtn'); if (leftSettingsBtn) leftSettingsBtn.addEventListener('click', () => { try { wb.openLeftSettingsModal(); } catch(e){} });
+
+        const chatToggleBtn = document.getElementById('chatToggleBtn'); if (chatToggleBtn) chatToggleBtn.addEventListener('click', () => { try { wb.toggleChat(); } catch(e){} });
+        
+        // Câbler le bouton de toggle des messages système
+        const sysToggleBtn = document.getElementById('sysToggleLeft');
+        if (sysToggleBtn) {
+          sysToggleBtn.addEventListener('click', () => { try { wb.toggleSystemMessages(); } catch(e){ console.warn(e); } });
+          // Initialiser l'apparence du bouton selon l'état chargé
+          sysToggleBtn.textContent = showSystemMessages ? 'S' : 'S✕';
+          sysToggleBtn.setAttribute('aria-pressed', String(showSystemMessages));
+        }
+      } catch (e) { console.warn('Wiring sidebar buttons failed', e); }
+
+      try {
+        const addBtn = document.getElementById('playerAddBtn');
+        const removeBtn = document.getElementById('playerRemoveBtn');
+        if (addBtn) addBtn.addEventListener('click', (e) => { e.preventDefault(); try { wb.addPlayerUI(); } catch(err){ console.warn(err); } });
+        if (removeBtn) removeBtn.addEventListener('click', (e) => { e.preventDefault(); try { wb.removePlayerUI(); } catch(err){ console.warn(err); } });
+      } catch (e) { console.warn('player count wiring failed', e); }
+
+      // --- Extra wiring to ensure mode/scenario/theme tiles and controls work reliably ---
+      try {
+        const modeBtn = document.getElementById('modeBtn');
+        if (modeBtn) modeBtn.addEventListener('click', (e) => { e.preventDefault(); try { wb.openSettingsModal(); } catch(err){ console.warn(err); } });
+
+        const playerCountBtn = document.getElementById('playerCountBtn');
+        if (playerCountBtn) playerCountBtn.addEventListener('click', (e) => { e.preventDefault(); try { wb.togglePlayerModal(); } catch(err){ console.warn(err); } });
+
+        const scenarioPill = document.getElementById('scenarioPill');
+        if (scenarioPill) scenarioPill.addEventListener('click', (e) => { e.preventDefault(); try { wb.openScenarioModal(); } catch(err){ console.warn(err); } });
+
+        document.querySelectorAll('.mode-tile').forEach(tile => {
+          const mode = tile.dataset.mode || tile.textContent.trim();
+          tile.removeAttribute('onclick');
+          tile.addEventListener('click', (ev) => {
+            try { selectModeTile(ev, mode); } catch (e) { console.warn('selectModeTile failed', e); }
+          });
+        });
+
+        document.querySelectorAll('.scenario-item').forEach(item => {
+          const scenario = item.dataset.scenario || item.textContent.trim();
+          item.removeAttribute('onclick');
+          item.addEventListener('click', (ev) => {
+            try { selectScenario(scenario, item); } catch (e) { console.warn('selectScenario failed', e); }
+          });
+        });
+
+        // Wire Train Skip category items
+        document.querySelectorAll('#trainSkipCategoryOverlay .scenario-item').forEach(item => {
+          const category = item.dataset.category || item.textContent.trim();
+          item.removeAttribute('onclick');
+          item.addEventListener('click', (ev) => {
+            try { selectTrainSkipCategory(category); } catch (e) { console.warn('selectTrainSkipCategory failed', e); }
+          });
+        });
+
+
+
+        // NOTE: bouton addPlayer déjà géré plus haut (lignes 1167-1171), pas besoin de le re-wirer ici
+      } catch (e) {
+        console.warn('UI extra wiring failed', e);
+      }
+
+      doc.addEventListener('click', (e) => {
+        const modal = $('#playerCountModal'); const btn = $('#playerCountBtn');
+        if (modal && !modal.contains(e.target) && !btn.contains(e.target)) modal.classList.remove('active');
+      });
+
+      arrangePlayersCircle(); positionSyllableAboveBomb(); updateSubmitForTurn();
+      setTimeout(()=>{ arrangePlayersCircle(); positionSyllableAboveBomb(); }, 100);
+    });
+
+    wb.leaveRoom = leaveRoom;
+    wb.startGameUI = startGameUI;
+    wb.openSettingsModal = openSettingsModal;
+    wb.closeSettingsModal = closeSettingsModal;
+    wb.handleSettingsOverlayClick = handleSettingsOverlayClick;
+    wb.selectModeTile = selectModeTile;
+    wb.openScenarioModal = openScenarioModal;
+    wb.closeScenarioModal = closeScenarioModal;
+    wb.handleScenarioOverlayClick = handleScenarioOverlayClick;
+    wb.selectScenario = selectScenario;
+    wb.openTrainSkipCategoryModal = openTrainSkipCategoryModal;
+    wb.closeTrainSkipCategoryModal = closeTrainSkipCategoryModal;
+    wb.handleTrainSkipCategoryOverlayClick = handleTrainSkipCategoryOverlayClick;
+    wb.selectTrainSkipCategory = selectTrainSkipCategory;
+    wb.applyWPP = applyWPP;
+    wb.clearWPP = clearWPP;
+    wb.togglePractice = togglePractice;
+    wb.openLeftSettingsModal = openLeftSettingsModal;
+    wb.closeLeftSettingsModal = closeLeftSettingsModal;
+    wb.handleLeftSettingsOverlayClick = handleLeftSettingsOverlayClick;
+    wb.applyLeftSettings = applyLeftSettings;
+    wb.addPlayerUI = addPlayer;
+    wb.removePlayerUI = function(){ if (players.length <= 1) return; const lastBot = players.slice().reverse().find(p=>p.isBot); if (lastBot) removePlayer(lastBot.id); };
+    wb.togglePlayerModal = function(){ const modal = $('#playerCountModal'); if (!modal) return; modal.classList.toggle('active'); if (modal.classList.contains('active')) updatePlayerCount(); };
+    wb.toggleChat = function(){ chatCollapsed = !chatCollapsed; const panel = $('#chatPanel'); if (!panel) return; panel.classList.toggle('collapsed', chatCollapsed); };
+    wb.toggleSystemMessages = wb.toggleSystemMessages;
+
+    global._wb_debug = { players, roomData, leftSettings, arrangePlayersCircle, positionSyllableAboveBomb, setChatReply, clearChatReply, get currentReplyTarget() { return currentReplyTarget; } };
+
+    // === Exposition pour module Socket.IO ===
+    global._appendChatMessage = appendChatMessage;
+    global._sendSystemChat = sendSystemChat;
+    global._renderPlayers = renderPlayers;
+    global._wb_updatePlayerCount = updatePlayerCount;
+    global._wb_turnIndex = turnIndex; // Note: pas réactif, le module lit via _wb_debug
+    // serverLives doit être accessible depuis le module Socket.IO (autre script tag)
+    global._wb_serverLives = serverLives;
+
+    // Fonction de synchro directe du vrai tableau `players` (évite les problèmes de référence
+    // si players a été réassigné via players = [...] après _wb_debug.players a été capturé)
+    global._wb_syncPlayers = function(serverPlayerList) {
+      if (!Array.isArray(serverPlayerList)) return;
+      // Peupler serverLives
+      serverPlayerList.forEach(sp => {
+        if (sp.name && sp.lives != null) serverLives.set(sp.name, sp.lives);
+      });
+      // Conserver le typing existant et les bots
+      const existingTyping = {};
+      players.forEach(p => { if (p._serverToken) existingTyping[p._serverToken] = p.typing || ''; });
+      const localBots = players.filter(p => p.isBot);
+
+      // Vider et repopuler le vrai players (sans réassigner la référence)
+      players.length = 0;
+      serverPlayerList.forEach((sp, idx) => {
+        const stableId = sp.token || sp.socketId || ('srv_' + idx);
+        players.push({
+          id: stableId,
+          name: sp.name,
+          isHost: sp.isHost || false,
+          isBot: false,
+          lives: sp.lives != null ? sp.lives : 2,
+          isAlive: sp.isAlive !== false,
+          disconnected: sp.disconnected || false,
+          staffRole: sp.staffRole || null,
+          typing: existingTyping[sp.token] || '',
+          avatar: sp.avatar || null,
+          _serverToken: sp.token,
+          _serverSocketId: sp.socketId
+        });
+      });
+      localBots.forEach(bot => {
+        if (!players.find(p => p.isBot && p.name === bot.name)) players.push(bot);
+      });
+      // Mettre à jour le localPlayerId
+      const profile = (() => { try { return JSON.parse(localStorage.getItem('wb_profile_v1')||'{}'); } catch(e){return{};} })();
+      const myName = profile.name || localStorage.getItem('wb_guest_name') || 'Guest';
+      const myPlayer = players.find(p => p.name === myName);
+      if (myPlayer) {
+        localPlayerId = myPlayer.id;
+        window._localPlayerId = myPlayer.id;
+      }
+      renderPlayers();
+      updatePlayerCount();
+    };
+
+    // Fonctions réactives exposées pour le module Socket.IO
+    global._wb_setTurnIndex = function(idx) {
+      turnIndex = idx;
+      global._wb_turnIndex = idx;
+      global._wb_turnIndex_current = idx;
+    };
+    global._wb_updateSubmitForTurn = updateSubmitForTurn;
+
+    // Exposer setBombProgress pour updateTimerDisplay (Socket.IO scope)
+    global._wb_setBombProgress = function(remMs, totalMs) {
+      const circle = document.getElementById('bombCircle');
+      if (!circle) return;
+      const total = totalMs || (8 + Number((window._wb_debug && window._wb_debug.leftSettings && window._wb_debug.leftSettings.extraTurnSeconds) || 0)) * 1000;
+      const ratio = Math.max(0, Math.min(1, total === 0 ? 0 : remMs / total));
+      const circ = 553;
+      circle.style.strokeDasharray = circ;
+      circle.style.strokeDashoffset = Math.round(circ * (1 - ratio));
+      const tEl = document.getElementById('topTimer');
+      if (tEl) tEl.textContent = `00:${String(Math.ceil(remMs / 1000)).padStart(2, '0')}`;
+    };
+    // Exposer pulseBombVisual
+    global._wb_pulseBomb = pulseBombVisual;
+
+    // Force la progression au round suivant côté hôte
+    // Appelé par wordAccepted — le serveur a déjà validé, on saute la revalidation
+    global._wb_advanceRound = function(word) {
+      if (!window.WordbombCore || !window.WordbombCore._internal) return;
+      const { state, clearRoundTimers, startRound } = window.WordbombCore._internal;
+      if (!state || !state.running) return;
+      // Stopper le timer actuel
+      clearRoundTimers();
+      // Déclencher onRoundWin pour avancer le turnIndex local et l'UI
+      const syl = state.currentSyllable || '';
+      if (typeof state.onRoundWin === 'function') {
+        state.onRoundWin(String(word || '').toUpperCase(), syl);
+      }
+      // Démarrer le round suivant immédiatement (génère nouvelle syllabe → onSyllable → newSyllable → tous)
+      if (state.running) startRound().catch(e => console.warn('[WB] startRound error:', e));
+    };
+
+    // Exposition des fonctions d'affichage UI et état de jeu pour le bloc Socket.IO
+    global._wb_showGameUI = function(forceShow) {
+      if (gameRunning && !forceShow) return; // déjà actif, ne pas re-déclencher (sauf forceShow=true)
+      gameRunning = true;
+      showSyllable(true);
+      showBomb(true);
+      showSubmit(true);
+      renderPlayers();
+      const btn = document.getElementById('startBtn');
+      if (btn) { btn.textContent = '⏹️'; btn.disabled = true; }
+      console.info('%c[WB] UI jeu activée (non-hôte)', 'color:#f97316;font-size:11px;');
+    };
+
+    // ========== VICTORY POPUP FUNCTIONALITY ==========
+    // Variables globales pour tracking
+    let gameStartTime = null;
+    let wordsFoundByPlayer = {};
+    let _victoryAutoCloseTimer = null;
+
+    // Fonction pour montrer le popup de victoire
+    function showVictoryPopup(winnerName, stats = {}, forcedStop = false) {
+      const popup = $('#victoryPopup');
+      if (!popup) return;
+
+      const winnerEl = $('#victoryWinner');
+      const wordsEl = $('#victoryWords');
+      const durationEl = $('#victoryDuration');
+      const labelEl = $('#victoryLabel');
+      const subEl = $('#victorySub');
+      const progressFill = $('#victoryProgressFill');
+
+      // Label + sous-titre selon le contexte
+      if (forcedStop) {
+        if (labelEl) labelEl.textContent = 'Partie arrêtée';
+        if (subEl) subEl.textContent = '';
+      } else {
+        if (labelEl) labelEl.textContent = 'Partie terminée';
+        if (subEl) subEl.textContent = 'remporte la partie';
+      }
+
+      if (winnerEl) winnerEl.textContent = escapeHtml(winnerName || '—');
+      if (wordsEl) wordsEl.textContent = stats.wordsFound || 0;
+      if (durationEl) durationEl.textContent = stats.duration || '0:00';
+
+      // Réinitialiser la barre de progression (restart animation)
+      if (progressFill) {
+        progressFill.style.animation = 'none';
+        void progressFill.offsetWidth; // reflow
+        progressFill.style.animation = '';
+      }
+
+      popup.classList.add('show');
+
+      // Confetti léger (seulement si victoire réelle, pas si forcedStop)
+      const confettiEl = document.getElementById('victoryConfetti');
+      if (confettiEl) {
+        confettiEl.innerHTML = '';
+        if (!forcedStop) {
+          const colors = ['#6366f1','#818cf8','#a5b4fc','#c7d2fe','#e0e7ff','#fff'];
+          for (let i = 0; i < 28; i++) {
+            const p = document.createElement('div');
+            p.className = 'confetti-piece';
+            p.style.left = Math.random() * 100 + '%';
+            p.style.background = colors[Math.floor(Math.random() * colors.length)];
+            p.style.animationDuration = (2 + Math.random() * 1.5) + 's';
+            p.style.animationDelay = (Math.random() * 0.8) + 's';
+            p.style.opacity = 0.6 + Math.random() * 0.4;
+            confettiEl.appendChild(p);
+          }
+        }
+      }
+
+      // Auto-fermer après 2.5 secondes
+      if (_victoryAutoCloseTimer) clearTimeout(_victoryAutoCloseTimer);
+      _victoryAutoCloseTimer = setTimeout(() => hideVictoryPopup(), 2500);
+    }
+
+    function hideVictoryPopup() {
+      const popup = $('#victoryPopup');
+      if (popup) popup.classList.remove('show');
+      if (_victoryAutoCloseTimer) { clearTimeout(_victoryAutoCloseTimer); _victoryAutoCloseTimer = null; }
+    }
+
+    // Fonction pour formater la durée
+    function formatGameDuration(startTime) {
+      if (!startTime) return '0:00';
+      
+      const duration = Date.now() - startTime;
+      const totalSeconds = Math.floor(duration / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    // Fonction pour compter les mots d'un joueur
+    function getWordsFoundByPlayer(playerName) {
+      return wordsFoundByPlayer[playerName] || 0;
+    }
+
+    // Fonction pour incrémenter le compteur de mots
+    function incrementWordsFound(playerName) {
+      if (!wordsFoundByPlayer[playerName]) {
+        wordsFoundByPlayer[playerName] = 0;
+      }
+      wordsFoundByPlayer[playerName]++;
+    }
+
+    // Fonction pour réinitialiser les stats
+    function resetGameStats() {
+      gameStartTime = null;
+      wordsFoundByPlayer = {};
+    }
+
+    // Exposer les fonctions pour utilisation globale
+    global.showVictoryPopup = showVictoryPopup;
+    global._wb_endGame = endGame;
+    global.hideVictoryPopup = hideVictoryPopup;
+    global.formatGameDuration = formatGameDuration;
+    global.getWordsFoundByPlayer = getWordsFoundByPlayer;
+    global.incrementWordsFound = incrementWordsFound;
+    global.resetGameStats = resetGameStats;
+    global.gameStartTime = gameStartTime;
+    global.wordsFoundByPlayer = wordsFoundByPlayer;
+
+  })(window, document);
+  </script>
+
+  <!-- ========== SOCKET.IO MULTIJOUEUR ========== -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+  (function() {
+    'use strict';
+
+    // Récupérer l'ID de salle depuis l'URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentRoomId = urlParams.get('roomId');
+
+    // Si pas de roomId dans l'URL, mode local uniquement (compatibilité)
+    if (!currentRoomId) {
+      
+      return;
+    }
+
+
+    // === Session token stable (même que index.html) ===
+    function getOrCreateToken() {
+      let token = localStorage.getItem('wb_session_token');
+      if (!token) {
+        token = 'tok_' + Date.now() + '_' + Math.random().toString(36).substr(2, 12);
+        localStorage.setItem('wb_session_token', token);
+      }
+      return token;
+    }
+    const SESSION_TOKEN = getOrCreateToken();
+
+    // Connexion Socket.IO
+    const socket = window._wbSocket || io(window.location.origin, {
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 300
+    });
+    window._wbSocket = socket;
+
+    let localSocketId = null;
+    // Si on arrive sur la page room avec un roomId et un token existant,
+    // on est forcément en situation de refresh/reconnexion — pas une première connexion.
+    // Cela permet à roomJoined(reconnected=true) de restaurer l'UI correctement.
+    let _hadPreviousConnection = !!(currentRoomId && localStorage.getItem('wb_session_token'));
+    let isHost = false;
+    let isSpectator = false;
+    let serverPlayers = []; // Copie des joueurs reçus du serveur
+    let reconnectOverlay = null;
+    let localStaffRole = null; // 'admin', 'staff', ou null
+
+    // Vérifier si l'utilisateur est staff connecté (silencieux si 401)
+    (async function checkStaffRole() {
+      const staffToken = localStorage.getItem('wb_staff_token');
+      if (!staffToken) return;
+      try {
+        const res = await fetch('/staff/me', { headers: { 'x-staff-token': staffToken } });
+        if (res.ok) { const data = await res.json(); localStaffRole = data.role; }
+        else { localStaffRole = null; } // 401 = token expiré, normal
+      } catch(e) { localStaffRole = null; }
+    })();
+
+    // ---- Helpers UI ----
+    function $ (sel) { return document.querySelector(sel); }
+
+    function addChatMsg(sender, text, isSystem) {
+      // Messages système supprimés du chat (trop verbeux)
+      if (isSystem) return;
+      if (typeof window.wb !== 'undefined') {
+        const appendFn = window._appendChatMessage;
+        if (appendFn) appendFn({ type: 'user', author: sender, text });
+      }
+    }
+
+    function showReconnectOverlay() {
+      if (reconnectOverlay) return;
+      reconnectOverlay = document.createElement('div');
+      reconnectOverlay.id = 'socketReconnectOverlay';
+      reconnectOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;z-index:99999;flex-direction:column;gap:12px;';
+      reconnectOverlay.innerHTML = '<div>⚠️ Reconnexion au serveur...</div><div style="font-size:14px;opacity:0.7">Veuillez patienter</div>';
+      document.body.appendChild(reconnectOverlay);
+    }
+
+    function hideReconnectOverlay() {
+      if (reconnectOverlay) { reconnectOverlay.remove(); reconnectOverlay = null; }
+    }
+
+    let _pauseBanner = null;
+    let _pauseCountdownInterval = null;
+
+    function _showPauseBanner(reason) {
+      if (_pauseBanner) _hidePauseBanner();
+      _pauseBanner = document.createElement('div');
+      _pauseBanner.id = 'pauseBanner';
+      _pauseBanner.style.cssText = [
+        'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:9998',
+        'background:linear-gradient(90deg,#1a1028,#2d1b4e)',
+        'color:#c4b5fd', 'text-align:center', 'padding:10px 16px',
+        'font-size:14px', 'font-weight:700', 'letter-spacing:0.5px',
+        'border-bottom:2px solid #7c3aed',
+        'display:flex', 'align-items:center', 'justify-content:center', 'gap:10px'
+      ].join(';');
+
+      const icon = document.createElement('span');
+      icon.textContent = '⏸️';
+
+      const msg = document.createElement('span');
+      msg.id = 'pauseBannerMsg';
+      msg.textContent = reason ? `Partie en pause — ${reason}` : 'Partie en pause';
+
+      const countdown = document.createElement('span');
+      countdown.id = 'pauseCountdown';
+      countdown.style.cssText = 'background:rgba(124,58,237,0.3);border-radius:6px;padding:2px 10px;font-size:12px;opacity:0.85';
+      countdown.textContent = '20s';
+
+      _pauseBanner.appendChild(icon);
+      _pauseBanner.appendChild(msg);
+      _pauseBanner.appendChild(countdown);
+      document.body.prepend(_pauseBanner);
+
+      // Compte à rebours visuel de 20s
+      let remaining = 20;
+      _pauseCountdownInterval = setInterval(() => {
+        remaining--;
+        const el = document.getElementById('pauseCountdown');
+        if (el) el.textContent = `${remaining}s`;
+        if (remaining <= 0) {
+          clearInterval(_pauseCountdownInterval);
+          _pauseCountdownInterval = null;
+        }
+      }, 1000);
+    }
+
+    function _hidePauseBanner() {
+      if (_pauseBanner) { _pauseBanner.remove(); _pauseBanner = null; }
+      if (_pauseCountdownInterval) { clearInterval(_pauseCountdownInterval); _pauseCountdownInterval = null; }
+    }
+
+    function updateTimerDisplay(remaining, total) {
+      // Déléguer à setBombProgress qui est dans le scope du module principal
+      if (typeof window._wb_setBombProgress === 'function') {
+        window._wb_setBombProgress(remaining, total);
+      } else {
+        // Fallback direct si pas encore exposé
+        const circumference = 553;
+        const ratio = total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 0;
+        const offset = Math.round(circumference * (1 - ratio));
+        const circle = document.getElementById('bombCircle');
+        if (circle) { circle.style.strokeDashoffset = offset; circle.style.strokeDasharray = circumference; }
+        const topTimer = document.getElementById('topTimer');
+        if (topTimer) topTimer.textContent = `00:${String(Math.ceil(remaining / 1000)).padStart(2, '0')}`;
+      }
+    }
+
+    function syncPlayersFromServer(serverPlayerList) {
+      serverPlayers = serverPlayerList || [];
+
+      // Utiliser la fonction de synchro directe exposée par le script 1
+      // Elle modifie le vrai `players` array (pas une copie potentiellement obsolète)
+      if (typeof window._wb_syncPlayers === 'function') {
+        window._wb_syncPlayers(serverPlayerList || []);
+        if (window._wb_debug && typeof window._wb_debug.arrangePlayersCircle === 'function') {
+          requestAnimationFrame(() => window._wb_debug.arrangePlayersCircle());
+        }
+        return;
+      }
+
+      // Fallback legacy (si _wb_syncPlayers n'est pas encore disponible)
+      // Attendre que _wb_debug soit disponible
+      if (!window._wb_debug || !Array.isArray(window._wb_debug.players)) {
+        setTimeout(() => syncPlayersFromServer(serverPlayerList), 50);
+        return;
+      }
+
+      // Peupler serverLives depuis les données serveur (important pour la reconnexion)
+      if (window._wb_serverLives) {
+        serverPlayerList.forEach(sp => {
+          if (sp.name && sp.lives != null) {
+            window._wb_serverLives.set(sp.name, sp.lives);
+          }
+        });
+      }
+
+      const localPlayers = window._wb_debug.players;
+      const profile = (() => { try { return JSON.parse(localStorage.getItem('wb_profile_v1')||'{}'); } catch(e){return{};} })();
+      const myName = profile.name || localStorage.getItem('wb_guest_name') || 'Guest';
+
+      // Conserver les bots locaux (le serveur ne les connaît pas)
+      const localBots = localPlayers.filter(p => p.isBot);
+
+      // Remplacer les joueurs réels par les données du serveur
+      const existingTyping = {};
+      localPlayers.forEach(p => { if (p._serverToken) existingTyping[p._serverToken] = p.typing || ''; });
+
+      localPlayers.length = 0;
+      serverPlayerList.forEach((sp, idx) => {
+        const avatarVal = sp.avatar || null;
+        const stableId = sp.token || sp.socketId || ('srv_' + idx);
+        localPlayers.push({
+          id: stableId,
+          name: sp.name,
+          isHost: sp.isHost || false,
+          isBot: false,
+          lives: sp.lives != null ? sp.lives : 2,
+          isAlive: sp.isAlive !== false,
+          disconnected: sp.disconnected || false,
+          staffRole: sp.staffRole || null,
+          typing: existingTyping[sp.token] || '',
+          avatar: avatarVal,
+          _serverToken: sp.token,
+          _serverSocketId: sp.socketId
+        });
+      });
+
+      localBots.forEach(bot => {
+        if (!localPlayers.find(p => p.isBot && p.name === bot.name)) {
+          localPlayers.push(bot);
+        }
+      });
+
+      const myPlayer = localPlayers.find(p => p.name === myName);
+      if (myPlayer) {
+        window._localPlayerId = myPlayer.id;
+        window._wb_localPlayerId_updated = myPlayer.id;
+      }
+
+      if (typeof window._renderPlayers === 'function') window._renderPlayers();
+      if (typeof window._wb_updatePlayerCount === 'function') window._wb_updatePlayerCount();
+      if (window._wb_debug && typeof window._wb_debug.arrangePlayersCircle === 'function') {
+        setTimeout(() => window._wb_debug.arrangePlayersCircle(), 50);
+      }
+    }
+
+    function syncRoomState(room) {
+      if (!room) return;
+      // isHost basé sur le token maintenant (plus fiable que socketId)
+      isHost = room.hostToken === SESSION_TOKEN ||
+               (room.players && room.players.find(p => p.token === SESSION_TOKEN && p.isHost) != null);
+
+      // Persister le statut hôte pour survivre au refresh
+      if (isHost) localStorage.setItem(`wb_wasHost_${currentRoomId}`, '1');
+      else localStorage.removeItem(`wb_wasHost_${currentRoomId}`);
+      // Exposer globalement pour les callbacks du module principal (onSyllable, etc.)
+      window._wbIsHost = isHost;
+
+      // Le bouton Start est réservé à l'hôte uniquement
+      const startBtn = document.getElementById('startBtn');
+      if (startBtn) {
+        startBtn.style.display = isHost ? '' : 'none';
+        startBtn.disabled = !isHost;
+      }
+
+      syncPlayersFromServer(room.players || []);
+    }
+
+    // ---- Connexion ----
+    socket.on('banned', ({ reason }) => {
+      // Couvrir toute la page avec un écran de bannissement irrécupérable
+      document.body.innerHTML = `
+        <div style="position:fixed;inset:0;background:#0a0a0f;display:flex;align-items:center;justify-content:center;z-index:99999;font-family:Inter,sans-serif;">
+          <div style="text-align:center;padding:48px;max-width:480px">
+            <div style="font-size:64px;margin-bottom:20px">🚫</div>
+            <h1 style="font-size:28px;font-weight:900;color:#f87171;margin-bottom:12px">Accès refusé</h1>
+            <p style="color:#9ca3af;font-size:15px;line-height:1.6;margin-bottom:8px">Votre accès à Wordbomb a été suspendu.</p>
+            <p style="color:#6b7280;font-size:13px;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.2);border-radius:10px;padding:12px 16px;margin-top:16px">
+              Raison : <strong style="color:#fca5a5">${reason || 'Aucune raison précisée'}</strong>
+            </p>
+          </div>
+        </div>`;
+      socket.disconnect();
+    });
+
+    socket.on('connect', () => {
+      localSocketId = socket.id;
+      // Annuler le timer d'overlay si on se reconnecte rapidement (micro-déco)
+      if (window._reconnectOverlayTimer) {
+        clearTimeout(window._reconnectOverlayTimer);
+        window._reconnectOverlayTimer = null;
+      }
+      hideReconnectOverlay();
+
+      console.log('%c\n' +
+        ' ██╗    ██╗ ██████╗ ██████╗ ██████╗ ██████╗  ██████╗ ███╗   ███╗██████╗ \n' +
+        ' ██║    ██║██╔═══██╗██╔══██╗██╔══██╗██╔══██╗██╔═══██╗████╗ ████║██╔══██╗\n' +
+        ' ██║ █╗ ██║██║   ██║██████╔╝██║  ██║██████╔╝██║   ██║██╔████╔██║██████╔╝\n' +
+        ' ██║███╗██║██║   ██║██╔══██╗██║  ██║██╔══██╗██║   ██║██║╚██╔╝██║██╔══██╗\n' +
+        ' ╚███╔███╔╝╚██████╔╝██║  ██║██████╔╝██████╔╝╚██████╔╝██║ ╚═╝ ██║██████╔╝\n' +
+        '  ╚══╝╚══╝  ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═════╝  ╚═════╝ ╚═╝     ╚═╝╚═════╝ \n',
+        'color: #f97316; font-family: monospace; font-size: 10px; line-height: 1.2;'
+      );
+      console.log('%c 💣  Room chargée — bonne partie !  💣 ', 'background: #1a1a2e; color: #f97316; font-size: 14px; font-weight: bold; padding: 6px 16px; border-radius: 6px; border: 1px solid #f97316;');
+      console.log('%c🔌 Socket connecté : ' + socket.id, 'color: #a3a3a3; font-size: 11px;');
+      
+
+      // 1. S'enregistrer avec le token de session stable
+      socket.emit('register', SESSION_TOKEN);
+
+      // 2. Rejoindre la salle
+      const profile = (() => {
+        try { return JSON.parse(localStorage.getItem('wb_profile_v1') || '{}'); } catch(e) { return {}; }
+      })();
+      const currentRoom = (() => {
+        try { return JSON.parse(localStorage.getItem('currentRoom') || '{}'); } catch(e) { return {}; }
+      })();
+
+      // Lire le pseudo guest persisté (même logique que getDefaultGuestName)
+      function _getGuestName() {
+        let g = null;
+        try { g = localStorage.getItem('wb_guest_name'); } catch(e) {}
+        if (!g) {
+          g = 'Guest' + (Math.floor(Math.random() * 9000) + 1000);
+          try { localStorage.setItem('wb_guest_name', g); } catch(e) {}
+        }
+        return g;
+      }
+      const playerName = profile.name || currentRoom.host || _getGuestName();
+
+      socket.emit('joinRoom', {
+        roomId: currentRoomId,
+        token: SESSION_TOKEN,
+        wasHost: localStorage.getItem(`wb_wasHost_${currentRoomId}`) === '1',
+        staffToken: localStorage.getItem('wb_staff_token') || null,
+        playerData: {
+          name: playerName,
+          avatar: profile.avatar || currentRoom.hostAvatar || ''
+        }
+      });
+    });
+
+    socket.on('disconnect', (reason) => {
+      _hadPreviousConnection = true;
+      // Attendre 4s avant d'afficher l'overlay (absorbe les micro-décos Railway/réseau)
+      window._reconnectOverlayTimer = setTimeout(() => {
+        showReconnectOverlay();
+      }, 2500);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('[Socket.IO] Erreur:', err.message);
+    });
+
+    // ---- Lobby ----
+    socket.on('roomJoined', ({ room, reconnected, gameState }) => {
+      // Si reconnexion en cours de partie : activer l'UI de jeu AVANT syncRoomState
+      // pour que gameRunning soit true lors du premier render (évite le nom vide / vies absentes)
+      if (reconnected && gameState) {
+        if (typeof window._wb_showGameUI === 'function') window._wb_showGameUI(true); // forceShow
+        // Note: gameRunning est dans le scope du script 1 via _wb_showGameUI
+      }
+
+      syncRoomState(room);
+
+      // Reconnexion en cours d'une partie — restaurer l'état de jeu complet
+      if (reconnected && gameState) {
+        // Restaurer la syllabe courante
+        if (gameState.syllable) {
+          window._wbCurrentSyllable = gameState.syllable;
+          const sylEl = document.getElementById('currentSyllable');
+          if (sylEl) sylEl.textContent = gameState.syllable;
+          const countEl = document.getElementById('syllableCount');
+          if (countEl) {
+            if (typeof gameState.count === 'number' && gameState.count > 0) {
+              countEl.textContent = gameState.count; countEl.style.display = 'inline-block';
+            } else { countEl.style.display = 'none'; }
+          }
+        }
+
+        // Restaurer le numéro de round
+        if (gameState.roundNumber) {
+          const roundEl = document.getElementById('topRoundCount');
+          if (roundEl) roundEl.textContent = String(gameState.roundNumber);
+        }
+
+        // Restaurer le turnIndex
+        if (typeof gameState.playerIndex === 'number') {
+          if (typeof window._wb_setTurnIndex === 'function') window._wb_setTurnIndex(gameState.playerIndex);
+          window._wb_turnIndex_current = gameState.playerIndex;
+        }
+
+        // Restaurer le timer
+        if (gameState.paused) {
+          // Partie en pause — afficher l'état de pause
+          updateTimerDisplay(gameState.remaining || 0, gameState.total || 8000);
+          const wordInput = document.getElementById('wordInput');
+          if (wordInput) { wordInput.disabled = true; wordInput.placeholder = '⏸️ Partie en pause...'; }
+          const sendBtn = document.getElementById('wordSubmitBtn');
+          if (sendBtn) sendBtn.disabled = true;
+        } else {
+          // Partie active — mettre à jour l'input selon le tour
+          updateTimerDisplay(gameState.remaining || 0, gameState.total || 8000);
+          if (typeof window._wb_updateSubmitForTurn === 'function') window._wb_updateSubmitForTurn();
+        }
+
+        if (typeof window._renderPlayers === 'function') window._renderPlayers();
+        if (typeof window._wb_updateSubmitForTurn === 'function') window._wb_updateSubmitForTurn();
+        addChatMsg('Système', '🔄 Reconnexion réussie — partie restaurée !', true);
+      }
+    });
+
+    socket.on('joinedAsSpectator', (room) => {
+      isSpectator = true;
+      
+      syncRoomState(room);
+      addChatMsg('Système', '👀 Vous observez cette partie — vous rejoindrez automatiquement à la fin', true);
+      // Désactiver les contrôles
+      const wordInput = $('#wordInput');
+      const sendBtn = $('#wordSubmitBtn');
+      const suicideBtn = $('#suicideBtn');
+      if (wordInput) { wordInput.disabled = true; wordInput.placeholder = 'Spectateur — vous rejoindrez à la fin de la partie'; }
+      if (sendBtn) sendBtn.disabled = true;
+      if (suicideBtn) suicideBtn.disabled = true;
+
+      // Afficher le bandeau spectateur
+      let banner = document.getElementById('spectatorBanner');
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'spectatorBanner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#1e1b4b,#312e81);color:#a5b4fc;text-align:center;padding:10px 16px;font-size:14px;font-weight:600;letter-spacing:0.5px;border-bottom:2px solid #4f46e5;display:flex;align-items:center;justify-content:center;gap:10px;';
+        banner.innerHTML = '<span>👀</span><span id="spectatorBannerText">Vous observez cette partie — vous rejoindrez automatiquement à la fin</span>';
+        document.body.prepend(banner);
+        document.body.style.paddingTop = (parseInt(document.body.style.paddingTop || '0') + 44) + 'px';
+      }
+    });
+
+    socket.on('promotedToPlayer', ({ room }) => {
+      isSpectator = false;
+      // Supprimer le bandeau
+      const banner = document.getElementById('spectatorBanner');
+      if (banner) { banner.remove(); document.body.style.paddingTop = ''; }
+      // Réactiver les contrôles
+      const wordInput = $('#wordInput');
+      const sendBtn = $('#wordSubmitBtn');
+      const suicideBtn = $('#suicideBtn');
+      if (wordInput) { wordInput.disabled = false; wordInput.placeholder = 'Entrez un mot...'; }
+      if (sendBtn) sendBtn.disabled = false;
+      if (suicideBtn) suicideBtn.disabled = false;
+
+      syncRoomState(room);
+      addChatMsg('Système', '🎮 Vous êtes maintenant joueur ! La prochaine partie va bientôt commencer.', true);
+    });
+
+    socket.on('spectatorsWaiting', ({ count, names }) => {
+      // Mettre à jour le bandeau côté joueurs actifs
+      let badge = document.getElementById('spectatorsWaitingBadge');
+      if (count === 0) { if (badge) badge.remove(); return; }
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.id = 'spectatorsWaitingBadge';
+        badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999;background:#1e1b4b;color:#a5b4fc;border:1px solid #4f46e5;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
+        document.body.appendChild(badge);
+      }
+      // Construction sécurisée du badge spectateurs (noms provenant du serveur — protection XSS)
+      badge.innerHTML = '';
+      badge.appendChild(document.createTextNode('👀 '));
+      const countStrong = document.createElement('strong');
+      countStrong.textContent = count;
+      badge.appendChild(countStrong);
+      badge.appendChild(document.createTextNode(' en attente : '));
+      // Escape chaque nom individuellement
+      const safeNames = (names || []).map(n => {
+        const span = document.createElement('span');
+        span.textContent = String(n).substring(0, 30);
+        return span.textContent; // textContent échappe automatiquement
+      });
+      badge.appendChild(document.createTextNode(safeNames.join(', ')));
+    });
+
+    socket.on('joinError', (msg) => {
+      alert('Impossible de rejoindre la salle: ' + msg);
+      window.location.href = 'index.html';
+    });
+
+    socket.on('playerJoined', ({ player, room }) => {
+      
+      syncRoomState(room);
+      addChatMsg('Système', `${player.name} a rejoint la salle`, true);
+    });
+
+    socket.on('playerLeft', ({ socketId, room, newHost }) => {
+      const leavingPlayer = serverPlayers.find(p => p.socketId === socketId);
+      const name = leavingPlayer ? leavingPlayer.name : 'Un joueur';
+      
+      syncRoomState(room);
+      addChatMsg('Système', `${name} a quitté la salle`, true);
+      if (newHost) addChatMsg('Système', `${newHost} est maintenant l'hôte 👑`, true);
+    });
+
+    socket.on('playerDisconnected', ({ token, playerName, room, gamePaused }) => {
+      syncRoomState(room);
+      if (gamePaused) {
+        addChatMsg('Système', `⏸️ ${playerName} s'est déconnecté — partie en pause`, true);
+      } else {
+        addChatMsg('Système', `⚠️ ${playerName} s'est déconnecté — 20s pour revenir`, true);
+      }
+    });
+
+    socket.on('gamePaused', ({ reason, remaining, total }) => {
+      // Figer l'affichage du timer
+      updateTimerDisplay(remaining, total);
+      // Bloquer l'input
+      const wordInput = document.getElementById('wordInput');
+      const sendBtn = document.getElementById('wordSubmitBtn');
+      const suicideBtn = document.getElementById('suicideBtn');
+      if (wordInput) { wordInput.disabled = true; wordInput.placeholder = `⏸️ ${reason || 'Partie en pause'}...`; }
+      if (sendBtn) sendBtn.disabled = true;
+      if (suicideBtn) suicideBtn.disabled = true;
+      // Afficher un overlay de pause léger
+      _showPauseBanner(reason);
+    });
+
+    socket.on('gameResumed', ({ remaining, total, syllable, playerIndex, player, roundNumber }) => {
+      // Masquer le banner de pause
+      _hidePauseBanner();
+
+      // Synchroniser la syllabe et le tour
+      if (syllable) {
+        window._wbCurrentSyllable = syllable;
+        const sylEl = document.getElementById('currentSyllable');
+        if (sylEl) sylEl.textContent = syllable;
+      }
+      if (typeof playerIndex === 'number') {
+        if (typeof window._wb_setTurnIndex === 'function') window._wb_setTurnIndex(playerIndex);
+        window._wb_turnIndex_current = playerIndex;
+        if (typeof window._renderPlayers === 'function') window._renderPlayers();
+      }
+      if (roundNumber) {
+        const roundEl = document.getElementById('topRoundCount');
+        if (roundEl) roundEl.textContent = String(roundNumber);
+      }
+
+      // Restaurer l'input selon le tour
+      if (typeof window._wb_updateSubmitForTurn === 'function') window._wb_updateSubmitForTurn();
+
+      // Le timer va repartir via les timerUpdate du serveur
+      updateTimerDisplay(remaining, total);
+    });
+
+    socket.on('playerReconnected', ({ token, playerName, room }) => {
+      syncRoomState(room);
+      _hidePauseBanner(); // au cas où
+      addChatMsg('Système', `✅ ${playerName} a reconnecté`, true);
+    });
+
+    socket.on('roomDeleted', () => {
+      alert('La salle a été supprimée par l\'hôte.');
+      window.location.href = 'index.html';
+    });
+
+    socket.on('playerReadyChanged', ({ socketId, isReady, room }) => {
+      syncRoomState(room);
+    });
+
+    socket.on('settingsUpdated', ({ settings }) => {
+      if (!settings) return;
+      // Mettre à jour roomData avec le scénario et wpp diffusés par le serveur
+      if (settings.scenario !== undefined) {
+        roomData.scenario = settings.scenario;
+        const pill = $('#scenarioPill');
+        if (pill) pill.textContent = settings.scenario ? settings.scenario : 'Aucun scénario';
+        try { localStorage.setItem(ROOM_KEY, JSON.stringify(roomData)); } catch(e) {}
+      }
+      if (settings.wpp !== undefined) roomData.wpp = settings.wpp;
+      // Mettre à jour les leftSettings partagés (vies, timer)
+      if (typeof settings.startingLives === 'number') {
+        leftSettings.baseStartingLives = settings.startingLives;
+        if (!gameRunning) { players.forEach(p => p.lives = leftSettings.baseStartingLives); renderPlayers(); }
+      }
+      if (typeof settings.extraTurnSeconds === 'number') {
+        leftSettings.extraTurnSeconds = settings.extraTurnSeconds;
+      }
+      if (!isHost) {
+        // Afficher une petite notification discrète dans le chat
+        addChatMsg('Système', '⚙️ Paramètres de la salle mis à jour', true);
+      }
+    });
+
+    // ---- Partie ----
+    socket.on('gameStarted', ({ room, firstPlayer, settings }) => {
+      
+      syncRoomState(room); // met aussi à jour window._wbIsHost
+      addChatMsg('Système', '🎮 La partie commence!', true);
+
+      // Appliquer les settings diffusés par le serveur (source de vérité)
+      if (settings) {
+        if (typeof settings.startingLives === 'number') leftSettings.baseStartingLives = settings.startingLives;
+        if (typeof settings.extraTurnSeconds === 'number') leftSettings.extraTurnSeconds = settings.extraTurnSeconds;
+        if (settings.scenario !== undefined) roomData.scenario = settings.scenario;
+        if (settings.wpp !== undefined) roomData.wpp = settings.wpp;
+      }
+
+      // Pour les joueurs NON-hôtes : afficher l'UI de jeu et marquer la partie comme lancée
+      // L'hôte démarre WordbombCore localement via startGameUI(), les autres attendent syllableUpdate
+      if (!isHost) {
+        if (typeof window._wb_showGameUI === 'function') {
+          window._wb_showGameUI();
+        }
+        // Désactiver l'input en attendant le premier syllableUpdate
+        const wordInput = document.getElementById('wordInput');
+        if (wordInput) { wordInput.disabled = true; wordInput.placeholder = 'En attente de la première syllabe...'; }
+        const sendBtn = document.getElementById('wordSubmitBtn');
+        if (sendBtn) sendBtn.disabled = true;
+      }
+    });
+
+    socket.on('syllableUpdate', ({ syllable, playerIndex, player, roundNumber, count }) => {
+      // Nouvelle syllabe = nouveau tour : effacer tous les typing affichés
+      if (window._wb_debug && Array.isArray(window._wb_debug.players)) {
+        window._wb_debug.players.forEach(p => {
+          if (p.typing && typeof setPlayerTyping === 'function') setPlayerTyping(p.id, '');
+        });
+      }
+
+      // Garantir que l'UI de jeu est visible (sécurité si gameStarted a été manqué)
+      if (typeof window._wb_showGameUI === 'function') window._wb_showGameUI();
+
+      // En mode multijoueur, le serveur est la seule source de vérité.
+      // Annuler le timer interne de WordbombCore pour éviter les doublons.
+      // Synchroniser aussi state.currentSyllable du core avec la syllabe serveur,
+      // pour éviter que submitWord ou _wb_advanceRound utilisent une ancienne valeur.
+      if (window._wbRoomId && window.WordbombCore && window.WordbombCore._internal) {
+        const _st = window.WordbombCore._internal.state;
+        if (_st) {
+          if (_st.roundTimerId) { clearTimeout(_st.roundTimerId); _st.roundTimerId = null; }
+          if (_st.roundTickIntervalId) { clearInterval(_st.roundTickIntervalId); _st.roundTickIntervalId = null; }
+          // Mettre à jour la syllabe courante du core avec la valeur serveur
+          if (syllable) _st.currentSyllable = String(syllable).toUpperCase();
+        }
+      }
+
+      // Stocker la syllabe courante pour submitWordFromInput
+      window._wbCurrentSyllable = syllable || '';
+
+      // Mettre à jour l'affichage de la syllabe
+      const sylEl = $('#currentSyllable');
+      if (sylEl) sylEl.textContent = syllable || '--';
+
+      // Afficher le badge de count
+      const countEl = $('#syllableCount');
+      if (countEl) {
+        if (typeof count === 'number' && count > 0) {
+          countEl.textContent = count; countEl.style.display = 'inline-block';
+        } else { countEl.style.display = 'none'; }
+      }
+
+      // Mettre à jour le round
+      const roundEl = document.getElementById('topRoundCount');
+      if (roundEl && roundNumber) roundEl.textContent = String(roundNumber);
+
+      // Synchroniser le turnIndex local (crucial pour les non-hôtes)
+      if (typeof playerIndex === 'number' && window._wb_debug && Array.isArray(window._wb_debug.players)) {
+        // Mapper l'index serveur (parmi les joueurs réels) → index local (liste avec bots intercalés)
+        // Le serveur ne connaît que les vrais joueurs ; localement on a des bots supplémentaires.
+        const localPlayers = window._wb_debug.players;
+        const realPlayers = localPlayers.filter(p => !p.isBot);
+        let localIdx = playerIndex;
+        if (realPlayers.length > 0 && playerIndex < realPlayers.length) {
+          const targetRealPlayer = realPlayers[playerIndex % realPlayers.length];
+          const foundIdx = localPlayers.findIndex(p => p.id === targetRealPlayer.id || p.name === targetRealPlayer.name);
+          if (foundIdx !== -1) localIdx = foundIdx;
+        }
+        if (typeof window._wb_setTurnIndex === 'function') window._wb_setTurnIndex(localIdx);
+        window._wb_turnIndex_current = localIdx;
+        if (typeof window._renderPlayers === 'function') window._renderPlayers();
+        if (typeof window._wb_updateSubmitForTurn === 'function') window._wb_updateSubmitForTurn();
+      }
+
+      // Indiquer le joueur actif visuellement — laisser renderPlayers() gérer via turnIndex
+      // (le serveur ne connaît pas les bots, donc on se fie au turnIndex local)
+      if (typeof window._renderPlayers === 'function') window._renderPlayers();
+
+      // Déterminer si c'est notre tour (par socketId OU par token de session)
+      // On relit l'active depuis la liste locale après mise à jour du turnIndex
+      const localActive = (window._wb_debug && Array.isArray(window._wb_debug.players))
+        ? window._wb_debug.players[typeof window._wb_turnIndex_current === 'number' ? window._wb_turnIndex_current % window._wb_debug.players.length : 0]
+        : null;
+      const isBotActive = localActive && localActive.isBot;
+
+      const isMyTurn = !isBotActive && player && (
+        player.socketId === localSocketId ||
+        player.token === SESSION_TOKEN
+      ) && !isSpectator;
+
+      if (isBotActive) {
+        // C'est le tour d'un bot local : bloquer l'input
+        const wordInput = $('#wordInput');
+        if (wordInput) { wordInput.disabled = true; wordInput.placeholder = `Attente du tour de ${localActive.name} (bot)...`; }
+        const sendBtn = $('#wordSubmitBtn');
+        if (sendBtn) sendBtn.disabled = true;
+      } else if (isMyTurn) {
+        const wordInput = $('#wordInput');
+        if (wordInput) { wordInput.disabled = false; wordInput.focus(); wordInput.placeholder = 'Entrez votre mot...'; }
+        const sendBtn = $('#wordSubmitBtn');
+        if (sendBtn) sendBtn.disabled = false;
+      } else if (!isSpectator) {
+        const wordInput = $('#wordInput');
+        if (wordInput) {
+          wordInput.disabled = true;
+          wordInput.placeholder = (player && player.name) ? `Tour de ${player.name}...` : 'Attente du prochain tour...';
+        }
+        const sendBtn = $('#wordSubmitBtn');
+        if (sendBtn) sendBtn.disabled = true;
+      }
+
+      // Afficher les zones de jeu si pas encore visibles (cas non-hôte en début de partie)
+      const sylArea = document.getElementById('syllableDisplay') || document.getElementById('syllableArea');
+      if (sylArea && sylArea.style.display === 'none') sylArea.style.display = '';
+    });
+
+    socket.on('turnChanged', ({ playerIndex, player }) => {
+      // Synchroniser le turnIndex pour TOUS (hôte inclus) — le serveur fait autorité
+      if (typeof playerIndex === 'number') {
+        if (typeof window._wb_setTurnIndex === 'function') window._wb_setTurnIndex(playerIndex);
+        window._wb_turnIndex_current = playerIndex;
+        if (typeof window._renderPlayers === 'function') window._renderPlayers();
+        if (typeof window._wb_updateSubmitForTurn === 'function') window._wb_updateSubmitForTurn();
+      }
+    });
+
+    socket.on('timerUpdate', ({ remaining, total }) => {
+      updateTimerDisplay(remaining, total);
+    });
+
+    socket.on('timeout', ({ socketId, playerName }) => {
+      // Le serveur prend la main pour gérer le changement de tour après timeout/suicide
+      // On bloque le prochain newSyllable émis par l'hôte localement (il serait redondant)
+      window._wb_serverHandledTurn = true;
+
+      if (socketId === localSocketId) {
+        addChatMsg('Système', '⏰ Temps écoulé!', true);
+      } else {
+        addChatMsg('Système', `⏰ ${playerName} a perdu un tour`, true);
+      }
+    });
+
+    // ---- Typing temps réel des autres joueurs ----
+    socket.on('playerTyping', ({ socketId, playerName, text, accepted }) => {
+      if (!window._wb_debug || !Array.isArray(window._wb_debug.players)) return;
+      let p = window._wb_debug.players.find(pl => pl._serverSocketId === socketId)
+           || window._wb_debug.players.find(pl => pl.name === playerName);
+      if (!p) return;
+      // Mettre à jour le socketId si nécessaire (après reconnexion du joueur)
+      if (p._serverSocketId !== socketId) p._serverSocketId = socketId;
+      if (typeof setPlayerTyping === 'function') {
+        setPlayerTyping(p.id, text, !!accepted);
+      }
+    });
+
+    socket.on('wordAccepted', ({ player, socketId, word, wordsFound }) => {
+      addChatMsg('Système', `✅ ${player}: ${word}`, true);
+
+      // Afficher le mot validé en vert chez le joueur qui vient de soumettre
+      if (window._wb_debug && Array.isArray(window._wb_debug.players)) {
+        const submitter = window._wb_debug.players.find(p => p._serverSocketId === socketId || p.name === player);
+        if (submitter && typeof setPlayerTyping === 'function') {
+          setPlayerTyping(submitter.id, word, true); // vert = accepté
+        }
+      }
+
+      // Mettre à jour les compteurs
+      if (window._wb_debug && Array.isArray(window._wb_debug.players)) {
+        const localP = window._wb_debug.players.find(p => p.name === player);
+        if (localP) localP.wordsFound = (localP.wordsFound || 0) + 1;
+      }
+      if (typeof window.incrementWordsFound === 'function') window.incrementWordsFound(player);
+
+      // Réactiver l'input si c'était notre soumission
+      if (socketId === localSocketId) {
+        const input = document.getElementById('wordInput');
+        const sendBtn = document.getElementById('wordSubmitBtn');
+        if (input) { input.value = ''; input.disabled = false; }
+        if (sendBtn) sendBtn.disabled = false;
+      }
+
+      // Le serveur émet toujours syllableUpdate après wordAccepted (via startNextRound).
+      // L'hôte n'a plus besoin d'appeler _wb_advanceRound : cela créait un conflit
+      // entre la syllabe choisie par le serveur et celle du WordbombCore local,
+      // causant des syllabes hors-scénario et des soumissions bloquées.
+      // Tous les clients (hôte inclus) attendent simplement syllableUpdate du serveur.
+    });
+
+    socket.on('wordRejected', ({ player, socketId, word, reason }) => {
+      if (socketId === localSocketId) {
+        // Afficher erreur et réactiver l'input
+        const errEl = document.getElementById('syllableError');
+        if (errEl) {
+          errEl.textContent = reason || 'Mot invalide';
+          errEl.classList.add('visible');
+          setTimeout(() => errEl.classList.remove('visible'), 1400);
+        }
+        const input = document.getElementById('wordInput');
+        const sendBtn = document.getElementById('wordSubmitBtn');
+        if (input) { input.value = ''; input.disabled = false; input.focus(); }
+        if (sendBtn) sendBtn.disabled = false;
+      }
+    });
+
+    socket.on('playerLostLife', ({ socketId, playerName, livesLeft, syllable }) => {
+      // Stocker dans serverLives — utilisé par playerSlotFor lors de TOUT rendu ultérieur
+      // Peu importe l'ordre d'arrivée des events, la bonne valeur sera toujours affichée
+      if (window._wb_serverLives) window._wb_serverLives.set(playerName, livesLeft);
+
+      // Sauvegarder la syllabe ratée si c'est le joueur local qui a perdu une vie.
+      // On utilise la syllabe envoyée par le serveur dans cet event (source de vérité),
+      // ce qui évite la race condition avec syllableUpdate qui peut arriver juste après
+      // et écraser window._wbCurrentSyllable avant qu'on ait pu le lire.
+      if (socketId === localSocketId) {
+        const syl = String(syllable || window._wbCurrentSyllable || '').trim().toUpperCase();
+        if (syl) {
+          try {
+            const raw = localStorage.getItem(DEATHS_KEY);
+            const list = raw ? JSON.parse(raw) : [];
+            if (!list.includes(syl)) { list.push(syl); localStorage.setItem(DEATHS_KEY, JSON.stringify(list)); }
+          } catch(e) {}
+        }
+      }
+
+      const playerList = (window._wb_debug && Array.isArray(window._wb_debug.players)) ? window._wb_debug.players : null;
+      if (playerList) {
+        const p = playerList.find(pl => pl._serverSocketId === socketId)
+               || playerList.find(pl => pl.name === playerName);
+        if (p) { p.lives = livesLeft; if (p._serverSocketId !== socketId) p._serverSocketId = socketId; }
+      }
+      if (typeof window._renderPlayers === 'function') window._renderPlayers();
+    });
+
+    socket.on('playerEliminated', ({ socketId, playerName }) => {
+      addChatMsg('Système', `☠️ ${playerName} est éliminé!`, true);
+      if (window._wb_serverLives) window._wb_serverLives.set(playerName, 0);
+      const playerList = (window._wb_debug && Array.isArray(window._wb_debug.players)) ? window._wb_debug.players : null;
+      if (playerList) {
+        const p = playerList.find(pl => pl._serverSocketId === socketId) || playerList.find(pl => pl.name === playerName);
+        if (p) { p.lives = 0; p.isAlive = false; if (p._serverSocketId !== socketId) p._serverSocketId = socketId; }
+        if (typeof window._renderPlayers === 'function') window._renderPlayers();
+      }
+    });
+
+    socket.on('gameOver', ({ winner, duration, room, forcedStop }) => {
+      // Supprimer le badge spectateurs en attente
+      const badge = document.getElementById('spectatorsWaitingBadge');
+      if (badge) badge.remove();
+
+      // Arrêter le moteur local si en cours
+      if (window.WordbombCore && typeof WordbombCore.stopGame === 'function') {
+        try { WordbombCore.stopGame(); } catch(e){}
+      }
+
+      if (typeof window._wb_endGame === 'function') window._wb_endGame(winner ? winner.name : 'Partie terminée');
+
+      if (typeof window.showVictoryPopup === 'function') {
+        const mins = Math.floor((duration||0) / 60000);
+        const secs = Math.floor(((duration||0) % 60000) / 1000);
+        if (forcedStop && !winner) {
+          // Partie arrêtée brutalement → afficher écran minimal sans vainqueur
+          window.showVictoryPopup('Partie arrêtée', { wordsFound: 0, duration: `${mins}:${String(secs).padStart(2,'0')}` }, true);
+        } else if (winner) {
+          window.showVictoryPopup(winner.name, {
+            wordsFound: winner.wordsFound,
+            duration: `${mins}:${String(secs).padStart(2,'0')}`
+          }, false);
+        }
+      }
+    });
+
+    socket.on('spectatorJoined', ({ name }) => {
+      addChatMsg('Système', `${name} observe la partie`, true);
+    });
+
+    // ---- Chat temps réel ----
+    socket.on('chatMessage', (chatMsg) => {
+      if (chatMsg.type === 'system') {
+        // Messages système supprimés du chat
+        return;
+      }
+      const appendFn = window._appendChatMessage;
+      if (chatMsg.type === 'bot') {
+        // Message TokiBot diffusé par le serveur → afficher pour tout le monde
+        if (appendFn) appendFn({ type: 'bot', author: 'TokiBot', text: chatMsg.message, ts: chatMsg.timestamp });
+        return;
+      }
+      if (chatMsg.senderSocketId !== localSocketId) {
+        if (appendFn) appendFn({ type: 'user', author: chatMsg.sender, text: chatMsg.message, avatar: chatMsg.avatar || '', replyTo: chatMsg.replyTo || null, ts: chatMsg.timestamp, staffRole: chatMsg.staffRole || null });
+        else addChatMsg(chatMsg.sender, chatMsg.message, false);
+      }
+    });
+
+    // ---- Intercepter l'envoi de mots pour mode multijoueur ----
+    // Surcharger submitWordFromInput pour envoyer via socket
+    const origSubmitInput = window.submitWordFromInput;
+    window._submitWordMultiplayer = function(word, syllable) {
+      if (!currentRoomId || !socket.connected) return false;
+      socket.emit('submitWord', { roomId: currentRoomId, word, syllable });
+      return true;
+    };
+
+    // Surcharger l'envoi du chat
+    const chatInput = $('#chatInput');
+    if (chatInput) {
+      chatInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          const msg = this.value.trim();
+          if (!msg || msg.startsWith('/')) return; // Laisser les commandes à l'original
+
+          e.stopPropagation(); // Empêcher double envoi
+          const profile = (() => {
+            try { return JSON.parse(localStorage.getItem('wb_profile_v1') || '{}'); } catch(e) { return {}; }
+          })();
+
+          const _senderName = profile.name || localStorage.getItem('wb_guest_name') || 'Guest';
+          const _replyTo = typeof window._wb_debug !== 'undefined' && window._wb_debug.currentReplyTarget ? window._wb_debug.currentReplyTarget : null;
+          socket.emit('chatMessage', {
+            roomId: currentRoomId,
+            message: msg,
+            playerName: _senderName,
+            avatar: profile.avatar || '',
+            replyTo: _replyTo,
+            staffToken: localStorage.getItem('wb_staff_token') || null
+          });
+          // Afficher localement
+          const _appendFn = window._appendChatMessage;
+          if (_appendFn) _appendFn({ type: 'user', author: _senderName, text: msg, avatar: profile.avatar || '', replyTo: _replyTo, staffRole: localStaffRole });
+          // Effacer le replyTo après envoi
+          if (window._wb_debug && typeof window._wb_debug.clearChatReply === 'function') window._wb_debug.clearChatReply();
+          this.value = '';
+          e.preventDefault();
+        }
+      }, true); // capture phase pour intercepter en premier
+    }
+
+    // ---- Intercepter newSyllable de WordbombCore ----
+    // L'hôte envoie au serveur la nouvelle syllabe quand elle change
+    window._wb_onSyllable_multiplayer = function(syllableInfo, timerMs) {
+      if (!currentRoomId || !socket.connected || !isHost) return;
+
+      // Si le serveur vient de gérer un timeout/suicide, il émettra lui-même syllableUpdate
+      // → on ignore ce newSyllable local pour éviter le conflit de tour
+      if (window._wb_serverHandledTurn) {
+        window._wb_serverHandledTurn = false; // reset le flag
+        return;
+      }
+
+      const syl = typeof syllableInfo === 'object' ? (syllableInfo.syl || '') : String(syllableInfo || '');
+
+      // Lire le turnIndex réactif mis à jour dans onSyllable (pas _wb_turnIndex qui est figé)
+      const playerIndex = typeof window._wb_turnIndex_current === 'number'
+        ? window._wb_turnIndex_current
+        : (window._wb_turnIndex || 0);
+      socket.emit('newSyllable', {
+        roomId: currentRoomId,
+        syllable: syl.toUpperCase(),
+        playerIndex: playerIndex,
+        timerMs: timerMs || 8000
+      });
+    };
+
+    // Exposer le socket globalement pour que d'autres scripts puissent l'utiliser
+    window._wbSocket = socket;
+    window._wbRoomId = currentRoomId;
+
+    // Nettoyer en quittant la page
+    window.addEventListener('beforeunload', () => {
+      if (socket.connected && currentRoomId) {
+        socket.emit('leaveRoom');
+      }
+    });
+
+
+  })();
+  </script>
+
+</body>
+
+</html>
