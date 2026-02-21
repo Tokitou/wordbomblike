@@ -599,6 +599,22 @@
     const DEATHS_KEY = 'wb_deaths_v1';
     const GAME_INITIAL_LIVES = 2;
 
+    // ── Enregistre une syllabe ratée dans le localStorage (appelée depuis tous les points de perte de vie) ──
+    function recordDeathSyllable(syl) {
+      const s = String(syl || '').trim().toUpperCase();
+      if (!s) return;
+      try {
+        const raw = localStorage.getItem(DEATHS_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        if (!list.includes(s)) {
+          list.push(s);
+          localStorage.setItem(DEATHS_KEY, JSON.stringify(list));
+        }
+      } catch(e) { console.warn('[WB] recordDeathSyllable error', e); }
+    }
+    // Exposer globalement pour le script Socket.IO (second bloc)
+    window.recordDeathSyllable = recordDeathSyllable;
+
     let players = [];
     let turnIndex = 0;
     let roundNum = 0;
@@ -1154,6 +1170,9 @@
       if (!gameRunning) return;
       // En mode multijoueur, forcer l'expiration du timer côté serveur
       if (window._wbRoomId && window._wbSocket && window._wbSocket.connected) {
+        // Capturer la syllabe courante AVANT l'aller-retour serveur (pour éviter la race condition)
+        const sylAtSuicide = window._wbCurrentSyllable || currentSyllable || '';
+        if (sylAtSuicide) recordDeathSyllable(sylAtSuicide);
         try { window._wbSocket.emit('suicideRequest', { roomId: window._wbRoomId }); } catch(e) { console.warn('suicide emit error', e); }
         return;
       }
@@ -1417,14 +1436,8 @@
             },
             onRoundLose: (syl) => {
               try {
-                const s = String(syl||'').trim().toUpperCase();
-                if (s) {
-                  try {
-                    const raw = localStorage.getItem(DEATHS_KEY);
-                    const list = raw ? JSON.parse(raw) : [];
-                    if (!list.includes(s)) { list.push(s); localStorage.setItem(DEATHS_KEY, JSON.stringify(list)); }
-                  } catch(e){}
-                }
+                // ── Toujours enregistrer la syllabe ratée, peu importe le mode ──
+                recordDeathSyllable(syl || window._wbCurrentSyllable);
 
                 // En mode multijoueur, le serveur gère les vies et l'avancement du tour.
                 if (window._wbRoomId) {
@@ -1774,7 +1787,11 @@
           try { removeCurrentRoomFromRoomsList(); } catch(e) { /* ignore */ }
           localStorage.removeItem('currentRoom');
         } catch(e){}
-        window.location.href = 'index.html';
+        if (window.WBTransitions) {
+          window.WBTransitions.leaveRoom('index.html');
+        } else {
+          window.location.href = 'index.html';
+        }
       }
     }
 
@@ -2637,7 +2654,7 @@
 
     socket.on('joinError', (msg) => {
       alert('Impossible de rejoindre la salle: ' + msg);
-      window.location.href = 'index.html';
+      if (window.WBTransitions) { window.WBTransitions.leaveRoom('index.html'); } else { window.location.href = 'index.html'; }
     });
 
     socket.on('playerJoined', ({ player, room }) => {
@@ -2713,7 +2730,7 @@
 
     socket.on('roomDeleted', () => {
       alert('La salle a été supprimée par l\'hôte.');
-      window.location.href = 'index.html';
+      if (window.WBTransitions) { window.WBTransitions.leaveRoom('index.html'); } else { window.location.href = 'index.html'; }
     });
 
     socket.on('playerReadyChanged', ({ socketId, isReady, room }) => {
@@ -2896,6 +2913,8 @@
       window._wb_serverHandledTurn = true;
 
       if (socketId === localSocketId) {
+        // Sauvegarder la syllabe au moment du timeout (avant que syllableUpdate ne l'écrase)
+        if (typeof window.recordDeathSyllable === 'function') window.recordDeathSyllable(window._wbCurrentSyllable);
         addChatMsg('Système', '⏰ Temps écoulé!', true);
       } else {
         addChatMsg('Système', `⏰ ${playerName} a perdu un tour`, true);
@@ -2970,18 +2989,8 @@
       if (window._wb_serverLives) window._wb_serverLives.set(playerName, livesLeft);
 
       // Sauvegarder la syllabe ratée si c'est le joueur local qui a perdu une vie.
-      // On utilise la syllabe envoyée par le serveur dans cet event (source de vérité),
-      // ce qui évite la race condition avec syllableUpdate qui peut arriver juste après
-      // et écraser window._wbCurrentSyllable avant qu'on ait pu le lire.
       if (socketId === localSocketId) {
-        const syl = String(syllable || window._wbCurrentSyllable || '').trim().toUpperCase();
-        if (syl) {
-          try {
-            const raw = localStorage.getItem(DEATHS_KEY);
-            const list = raw ? JSON.parse(raw) : [];
-            if (!list.includes(syl)) { list.push(syl); localStorage.setItem(DEATHS_KEY, JSON.stringify(list)); }
-          } catch(e) {}
-        }
+        if (typeof window.recordDeathSyllable === 'function') window.recordDeathSyllable(syllable || window._wbCurrentSyllable);
       }
 
       const playerList = (window._wb_debug && Array.isArray(window._wb_debug.players)) ? window._wb_debug.players : null;
@@ -3137,6 +3146,8 @@
   })();
   </script>
 
+  <!-- Transitions & animations -->
+  <script src="transitions.js"></script>
 </body>
 
 </html>
