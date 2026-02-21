@@ -27,7 +27,87 @@
       padding-bottom: 48px;
     }
   </style>
-  
+
+  <style>
+    /* ── Ranked button (locked) ── */
+    .btn-ranked-locked {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 10px 28px;
+      border-radius: 12px;
+      border: 2px solid #4a3a1a;
+      background: repeating-linear-gradient(
+        135deg,
+        #1a1208 0px,
+        #1a1208 12px,
+        #1f1608 12px,
+        #1f1608 24px
+      );
+      color: #7a6030;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: not-allowed;
+      opacity: 0.85;
+      overflow: hidden;
+      transition: opacity 0.2s;
+      min-width: 160px;
+      box-shadow: inset 0 0 0 1px #2e2008, 0 2px 8px #0005;
+    }
+
+    .btn-ranked-locked::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, #ffffff08 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .ranked-label {
+      font-size: 15px;
+      letter-spacing: 0.5px;
+      color: #c8922a;
+      text-shadow: 0 0 8px #c8922a55;
+    }
+
+    .ranked-chain {
+      font-size: 18px;
+      line-height: 1;
+      filter: grayscale(0.3);
+      animation: chain-sway 2.4s ease-in-out infinite;
+    }
+    .ranked-chain-right {
+      animation-delay: -1.2s;
+      transform: scaleX(-1);
+    }
+
+    .ranked-soon {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #5a4820;
+      margin-top: 1px;
+    }
+
+    @keyframes chain-sway {
+      0%, 100% { transform: rotate(-8deg); }
+      50%       { transform: rotate(8deg); }
+    }
+    .ranked-chain-right {
+      animation-delay: -1.2s;
+    }
+    .ranked-chain-right {
+      animation-name: chain-sway-r;
+    }
+    @keyframes chain-sway-r {
+      0%, 100% { transform: rotate(8deg); }
+      50%       { transform: rotate(-8deg); }
+    }
+  </style>
+
   <!-- Scripts de traduction et guide -->
   <script src="guide-content.js"></script>
 </head>
@@ -81,8 +161,11 @@
         <button class="btn-primary" id="openCreateRoomBtn" data-i18n="createRoom">
           🚀 Créer une salle
         </button>
-        <button class="btn-secondary" id="quickPlayBtn" data-i18n="quickPlay">
-          ⚡ Partie rapide
+        <button class="btn-ranked-locked" id="rankedBtn" disabled aria-disabled="true" title="Ranked — Bientôt disponible">
+          <span class="ranked-chain ranked-chain-left">⛓️</span>
+          <span class="ranked-label">🏆 Ranked</span>
+          <span class="ranked-chain ranked-chain-right">⛓️</span>
+          <span class="ranked-soon">Bientôt disponible</span>
         </button>
       </div>
     </div>
@@ -1525,29 +1608,7 @@
       $('#cancelCreate')?.addEventListener('click', () => closeModal('createRoomModal'));
       $('#createRoomModal')?.addEventListener('click', (e) => { if (e.target === $('#createRoomModal')) closeModal('createRoomModal'); });
 
-      $('#quickPlayBtn')?.addEventListener('click', () => {
-        const profile = loadProfile();
-        const rooms = loadRooms();
-
-        const room = {
-          id: Date.now(),
-          name: 'Partie rapide',
-          host: profile.name,
-          hostAvatar: profile.avatar,
-          mode: 'Original',
-          language: '🇫🇷',
-          players: 1,
-          maxPlayers: 6,
-          createdAt: Date.now()
-        };
-
-        rooms.push(room);
-        saveRooms(rooms);
-
-        // Redirect handled by socket.on('roomCreated') - no manual redirect needed
-        // try { localStorage.setItem('currentRoom', JSON.stringify(room)); } catch (e) {}
-        // window.location.href = 'room.html';
-      });
+      // Ranked button — disabled, no logic yet
 
       $('#profileBtn')?.addEventListener('click', () => {
         const p = loadProfile();
@@ -2657,23 +2718,7 @@
         });
       }
 
-      // Patch quickPlay
-      const quickPlayBtn = document.querySelector('#quickPlayBtn');
-      if (quickPlayBtn) {
-        const clone = quickPlayBtn.cloneNode(true);
-        quickPlayBtn.parentNode.replaceChild(clone, quickPlayBtn);
-        clone.addEventListener('click', () => {
-          const profile = getProfile();
-          socket.emit('createRoom', {
-            token: SESSION_TOKEN,
-            name: 'Partie rapide',
-            host: profile.name || getDefaultGuestName(),
-            hostAvatar: profile.avatar || '',
-            scenario: null,
-            wpp: null
-          });
-        });
-      }
+      // Ranked button — no socket logic yet
 
       // joinRoom est déjà géré directement dans la fonction locale (voir ci-dessus)
       // plus besoin de surcharge ici
