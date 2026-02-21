@@ -33,78 +33,53 @@
     .btn-ranked-locked {
       position: relative;
       display: inline-flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 2px;
-      padding: 10px 28px;
+      padding: 15px 36px;
       border-radius: 12px;
-      border: 2px solid #4a3a1a;
-      background: repeating-linear-gradient(
-        135deg,
-        #1a1208 0px,
-        #1a1208 12px,
-        #1f1608 12px,
-        #1f1608 24px
-      );
-      color: #7a6030;
-      font-weight: 700;
-      font-size: 15px;
+      border: 2px solid #5a4010;
+      background: #0e0b04;
       cursor: not-allowed;
-      opacity: 0.85;
       overflow: hidden;
-      transition: opacity 0.2s;
-      min-width: 160px;
-      box-shadow: inset 0 0 0 1px #2e2008, 0 2px 8px #0005;
+      min-width: 180px;
+      min-height: 54px;
+      box-shadow: 0 4px 16px #0006, inset 0 1px 0 #ffffff08;
     }
 
-    .btn-ranked-locked::before {
-      content: '';
+    /* SVG pleine surface pour chaînes + barre */
+    .ranked-chains {
       position: absolute;
       inset: 0;
-      background: linear-gradient(135deg, #ffffff08 0%, transparent 60%);
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
       pointer-events: none;
+    }
+
+    /* Contenu au-dessus du SVG */
+    .ranked-inner {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
     }
 
     .ranked-label {
       font-size: 15px;
+      font-weight: 800;
       letter-spacing: 0.5px;
-      color: #c8922a;
-      text-shadow: 0 0 8px #c8922a55;
-    }
-
-    .ranked-chain {
-      font-size: 18px;
-      line-height: 1;
-      filter: grayscale(0.3);
-      animation: chain-sway 2.4s ease-in-out infinite;
-    }
-    .ranked-chain-right {
-      animation-delay: -1.2s;
-      transform: scaleX(-1);
+      color: #a07828;
+      text-shadow: 0 0 10px #a0782844;
     }
 
     .ranked-soon {
-      font-size: 10px;
-      letter-spacing: 1.5px;
+      font-size: 9px;
+      letter-spacing: 2px;
       text-transform: uppercase;
-      color: #5a4820;
-      margin-top: 1px;
-    }
-
-    @keyframes chain-sway {
-      0%, 100% { transform: rotate(-8deg); }
-      50%       { transform: rotate(8deg); }
-    }
-    .ranked-chain-right {
-      animation-delay: -1.2s;
-    }
-    .ranked-chain-right {
-      animation-name: chain-sway-r;
-    }
-    @keyframes chain-sway-r {
-      0%, 100% { transform: rotate(8deg); }
-      50%       { transform: rotate(-8deg); }
+      color: #5a4010;
+      font-weight: 600;
     }
   </style>
 
@@ -162,10 +137,23 @@
           🚀 Créer une salle
         </button>
         <button class="btn-ranked-locked" id="rankedBtn" disabled aria-disabled="true" title="Ranked — Bientôt disponible">
-          <span class="ranked-chain ranked-chain-left">⛓️</span>
-          <span class="ranked-label">🏆 Ranked</span>
-          <span class="ranked-chain ranked-chain-right">⛓️</span>
-          <span class="ranked-soon">Bientôt disponible</span>
+          <svg class="ranked-chains" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="chainPattern" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+                <!-- maillon horizontal -->
+                <ellipse cx="11" cy="7" rx="7" ry="4" fill="none" stroke="#7a5c1e" stroke-width="2.2"/>
+                <!-- maillon vertical -->
+                <ellipse cx="11" cy="15" rx="4" ry="7" fill="none" stroke="#7a5c1e" stroke-width="2.2"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" rx="12" fill="url(#chainPattern)" opacity="0.55"/>
+            <!-- barre diagonale -->
+            <line class="ranked-bar" x1="8%" y1="92%" x2="92%" y2="8%" stroke="#c0392b" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+          </svg>
+          <span class="ranked-inner">
+            <span class="ranked-label">🏆 Ranked</span>
+            <span class="ranked-soon">Bientôt disponible</span>
+          </span>
         </button>
       </div>
     </div>
